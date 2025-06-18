@@ -1,6 +1,6 @@
 import useSWR from 'swr';
 import { useState, useCallback } from 'react';
-import { scrapeAPI } from '../lib/api';
+import { scrapeAPI, statsAPI } from '../lib/api';
 
 // Custom hook for monitoring scrape status
 export function useScrapeStatus() {
@@ -9,10 +9,10 @@ export function useScrapeStatus() {
 
   // Fetch scrape status with polling when running
   const {
-    data,
-    error,
-    isLoading,
-    mutate
+    data: scrapeData,
+    error: scrapeError,
+    isLoading: scrapeLoading,
+    mutate: mutateScrape
   } = useSWR(
     'scrape-status',
     () => scrapeAPI.getStatus().then(res => res.data),
@@ -24,13 +24,30 @@ export function useScrapeStatus() {
     }
   );
 
+  // Fetch database stats
+  const {
+    data: statsData,
+    error: statsError,
+    isLoading: statsLoading,
+    mutate: mutateStats
+  } = useSWR(
+    'database-stats',
+    () => statsAPI.getStats().then(res => res.data),
+    {
+      refreshInterval: 30000, // Refresh every 30 seconds
+      revalidateOnFocus: false,
+      errorRetryCount: 3,
+    }
+  );
+
   // Start scraping
   const startScraping = useCallback(async (options = {}) => {
     setIsStarting(true);
     try {
       await scrapeAPI.start(options);
-      // Refresh status immediately
-      mutate();
+      // Refresh both scrape status and stats
+      mutateScrape();
+      mutateStats();
       return { success: true };
     } catch (error) {
       console.error('Failed to start scraping:', error);
@@ -41,15 +58,16 @@ export function useScrapeStatus() {
     } finally {
       setIsStarting(false);
     }
-  }, [mutate]);
+  }, [mutateScrape, mutateStats]);
 
   // Stop scraping
   const stopScraping = useCallback(async () => {
     setIsStopping(true);
     try {
       await scrapeAPI.stop();
-      // Refresh status immediately
-      mutate();
+      // Refresh both scrape status and stats
+      mutateScrape();
+      mutateStats();
       return { success: true };
     } catch (error) {
       console.error('Failed to stop scraping:', error);
@@ -60,25 +78,25 @@ export function useScrapeStatus() {
     } finally {
       setIsStopping(false);
     }
-  }, [mutate]);
+  }, [mutateScrape, mutateStats]);
 
   // Calculate progress percentage
   const getProgressPercentage = useCallback(() => {
-    if (!data || !data.running || !data.total_pages) return 0;
-    return Math.round((data.current_page / data.total_pages) * 100);
-  }, [data]);
+    if (!scrapeData || !scrapeData.running || !scrapeData.total_pages) return 0;
+    return Math.round((scrapeData.current_page / scrapeData.total_pages) * 100);
+  }, [scrapeData]);
 
   // Get estimated time remaining
   const getEstimatedTimeRemaining = useCallback(() => {
-    if (!data || !data.running || !data.current_page || !data.total_pages) {
+    if (!scrapeData || !scrapeData.running || !scrapeData.current_page || !scrapeData.total_pages) {
       return null;
     }
 
-    const pagesRemaining = data.total_pages - data.current_page;
-    const startTime = new Date(data.start_time);
+    const pagesRemaining = scrapeData.total_pages - scrapeData.current_page;
+    const startTime = new Date(scrapeData.start_time);
     const now = new Date();
     const elapsedMs = now - startTime;
-    const pagesCompleted = data.current_page;
+    const pagesCompleted = scrapeData.current_page;
     
     if (pagesCompleted === 0) return null;
 
@@ -95,13 +113,13 @@ export function useScrapeStatus() {
     } else {
       return `${remainingMinutes} minutes`;
     }
-  }, [data]);
+  }, [scrapeData]);
 
   // Format last updated time
   const getLastUpdatedText = useCallback(() => {
-    if (!data?.last_updated) return 'Never';
+    if (!scrapeData?.last_updated) return 'Never';
     
-    const lastUpdated = new Date(data.last_updated);
+    const lastUpdated = new Date(scrapeData.last_updated);
     const now = new Date();
     const diffMs = now - lastUpdated;
     const diffSeconds = Math.floor(diffMs / 1000);
@@ -114,16 +132,27 @@ export function useScrapeStatus() {
     } else {
       return lastUpdated.toLocaleTimeString();
     }
-  }, [data]);
+  }, [scrapeData]);
+
+  // Refresh both data sources
+  const refresh = useCallback(() => {
+    mutateScrape();
+    mutateStats();
+  }, [mutateScrape, mutateStats]);
 
   return {
-    // Status data
-    isRunning: data?.running || false,
-    currentPage: data?.current_page || 0,
-    totalPages: data?.total_pages || 0,
-    itemsScraped: data?.items_scraped || 0,
-    startTime: data?.start_time,
-    lastUpdated: data?.last_updated,
+    // Scraper status data
+    isRunning: scrapeData?.running || false,
+    currentPage: scrapeData?.current_page || 0,
+    totalPages: scrapeData?.total_pages || 0,
+    itemsScraped: scrapeData?.items_scraped || 0,
+    startTime: scrapeData?.start_time,
+    lastUpdated: scrapeData?.last_updated,
+    
+    // Database stats
+    totalCardsInDatabase: statsData?.database?.total_cards || 0,
+    inStockCardsInDatabase: statsData?.database?.in_stock_cards || 0,
+    priceRange: statsData?.database?.price_range || { min: 0, max: 0 },
     
     // Calculated values
     progressPercentage: getProgressPercentage(),
@@ -131,18 +160,18 @@ export function useScrapeStatus() {
     lastUpdatedText: getLastUpdatedText(),
     
     // Loading states
-    isLoading,
+    isLoading: scrapeLoading || statsLoading,
     isStarting,
     isStopping,
-    error,
+    error: scrapeError || statsError,
     
     // Actions
     startScraping,
     stopScraping,
-    refresh: mutate,
+    refresh,
     
     // Helper methods
-    canStart: !data?.running && !isStarting,
-    canStop: data?.running && !isStopping,
+    canStart: !scrapeData?.running && !isStarting,
+    canStop: scrapeData?.running && !isStopping,
   };
 } 

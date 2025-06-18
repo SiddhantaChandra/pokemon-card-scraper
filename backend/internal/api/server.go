@@ -132,6 +132,9 @@ func (s *Server) setupRoutes() {
 	// API group
 	api := s.router.Group("/api")
 	{
+		// Image proxy endpoint
+		api.GET("/proxy-image", s.handlers.ImageProxy) // GET /api/proxy-image
+
 		// Card endpoints
 		cards := api.Group("/cards")
 		{

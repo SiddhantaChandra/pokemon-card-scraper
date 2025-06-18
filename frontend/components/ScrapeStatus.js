@@ -13,6 +13,9 @@ export default function ScrapeStatus({ className = '' }) {
     currentPage,
     totalPages,
     itemsScraped,
+    totalCardsInDatabase,
+    inStockCardsInDatabase,
+    priceRange,
     progressPercentage,
     estimatedTimeRemaining,
     lastUpdatedText,
@@ -122,33 +125,99 @@ export default function ScrapeStatus({ className = '' }) {
         )}
       </div>
 
+      {/* Main Statistics - Always Visible */}
+      <div className="p-4">
+        <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
+          <div className="text-center">
+            <div className="text-2xl font-bold text-gray-900">
+              {totalCardsInDatabase.toLocaleString()}
+            </div>
+            <div className="text-xs text-gray-500">Items Scraped</div>
+          </div>
+          <div className="text-center">
+            <div className="text-2xl font-bold text-gray-900">
+              {isRunning ? currentPage : 0}
+            </div>
+            <div className="text-xs text-gray-500">Current Page</div>
+          </div>
+          <div className="text-center">
+            <div className="text-2xl font-bold text-gray-900">
+              {isRunning ? totalPages : 0}
+            </div>
+            <div className="text-xs text-gray-500">Total Pages</div>
+          </div>
+          <div className="text-center">
+            <div className="text-2xl font-bold text-gray-900">
+              {isRunning ? progressPercentage : 0}%
+            </div>
+            <div className="text-xs text-gray-500">Progress</div>
+          </div>
+        </div>
+
+        {/* Last Updated */}
+        <div className="text-sm text-gray-500 mt-4 text-center">
+          Last updated: {lastUpdatedText}
+        </div>
+      </div>
+
       {/* Details Section */}
       {showDetails && (
-        <div className="p-4 bg-gray-50">
-          {/* Statistics */}
-          <div className="grid grid-cols-2 md:grid-cols-4 gap-4 mb-4">
-            <div className="text-center">
-              <div className="text-2xl font-bold text-gray-900">{itemsScraped}</div>
-              <div className="text-xs text-gray-500">Items Scraped</div>
-            </div>
-            <div className="text-center">
-              <div className="text-2xl font-bold text-gray-900">{currentPage}</div>
-              <div className="text-xs text-gray-500">Current Page</div>
-            </div>
-            <div className="text-center">
-              <div className="text-2xl font-bold text-gray-900">{totalPages}</div>
-              <div className="text-xs text-gray-500">Total Pages</div>
-            </div>
-            <div className="text-center">
-              <div className="text-2xl font-bold text-gray-900">{progressPercentage}%</div>
-              <div className="text-xs text-gray-500">Progress</div>
+        <div className="p-4 bg-gray-50 border-t border-gray-200">
+          {/* Database Statistics */}
+          <div className="mb-4">
+            <h4 className="text-sm font-medium text-gray-700 mb-2">Database Statistics</h4>
+            <div className="grid grid-cols-2 gap-4">
+              <div className="bg-white p-3 rounded border">
+                <div className="text-lg font-semibold text-gray-900">
+                  {totalCardsInDatabase.toLocaleString()}
+                </div>
+                <div className="text-xs text-gray-500">Total Cards</div>
+              </div>
+              <div className="bg-white p-3 rounded border">
+                <div className="text-lg font-semibold text-green-600">
+                  {inStockCardsInDatabase.toLocaleString()}
+                </div>
+                <div className="text-xs text-gray-500">In Stock</div>
+              </div>
+              {priceRange.min > 0 && (
+                <>
+                  <div className="bg-white p-3 rounded border">
+                    <div className="text-lg font-semibold text-gray-900">
+                      ¥{priceRange.min.toLocaleString()}
+                    </div>
+                    <div className="text-xs text-gray-500">Min Price</div>
+                  </div>
+                  <div className="bg-white p-3 rounded border">
+                    <div className="text-lg font-semibold text-gray-900">
+                      ¥{priceRange.max.toLocaleString()}
+                    </div>
+                    <div className="text-xs text-gray-500">Max Price</div>
+                  </div>
+                </>
+              )}
             </div>
           </div>
 
-          {/* Last Updated */}
-          <div className="text-sm text-gray-500 mb-4">
-            Last updated: {lastUpdatedText}
-          </div>
+          {/* Current Scrape Job Statistics (only when running) */}
+          {isRunning && (
+            <div className="mb-4">
+              <h4 className="text-sm font-medium text-gray-700 mb-2">Current Scrape Job</h4>
+              <div className="grid grid-cols-2 gap-4">
+                <div className="bg-blue-50 p-3 rounded border">
+                  <div className="text-lg font-semibold text-blue-600">
+                    {itemsScraped.toLocaleString()}
+                  </div>
+                  <div className="text-xs text-gray-500">Items This Job</div>
+                </div>
+                <div className="bg-blue-50 p-3 rounded border">
+                  <div className="text-lg font-semibold text-blue-600">
+                    {currentPage} / {totalPages}
+                  </div>
+                  <div className="text-xs text-gray-500">Pages Progress</div>
+                </div>
+              </div>
+            </div>
+          )}
 
           {/* Scrape Options (when not running) */}
           {!isRunning && (

@@ -241,12 +241,12 @@ export default function Home() {
                 Data scraped from{' '}
                 <a
                   href="https://torecacamp-pokemon.com"
-                  target="_blank"
-                  rel="noopener noreferrer"
+              target="_blank"
+              rel="noopener noreferrer"
                   className="text-blue-600 hover:text-blue-800"
-                >
+            >
                   torecacamp-pokemon.com
-                </a>
+            </a>
               </p>
               <p className="mt-1">
                 Prices and availability are updated regularly through automated scraping.

@@ -161,15 +161,22 @@ export const apiHelpers = {
   // Build card image URL (fallback if needed)
   getCardImageUrl: (card) => {
     if (card.image_url) {
+      let imageUrl = card.image_url;
+      
+      // Replace {width} placeholder with actual width (200px)
+      imageUrl = imageUrl.replace(/\{width\}/gi, '200');
+      
       // If it's a relative URL, make it absolute
-      if (card.image_url.startsWith('/')) {
-        return `https://torecacamp-pokemon.com${card.image_url}`;
+      if (imageUrl.startsWith('/')) {
+        // Use our API proxy for images to avoid CORS issues
+        return `/api/proxy-image?url=${encodeURIComponent(`https://torecacamp-pokemon.com${imageUrl}`)}`;
       }
-      return card.image_url;
+      // Use our API proxy for external images
+      return `/api/proxy-image?url=${encodeURIComponent(imageUrl)}`;
     }
     
     // Fallback to a placeholder image
-    return '/images/card-placeholder.png';
+    return '/images/card-placeholder.svg';
   },
 
   // Get stock status text and color

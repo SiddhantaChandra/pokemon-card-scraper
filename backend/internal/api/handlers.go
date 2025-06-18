@@ -2,7 +2,9 @@ package api
 
 import (
 	"fmt"
+	"io"
 	"net/http"
+	"net/url"
 	"strconv"
 	"time"
 
@@ -343,4 +345,44 @@ func RespondWithSuccess(c *gin.Context, message string, data interface{}) {
 	}
 
 	c.JSON(http.StatusOK, response)
+}
+
+// ImageProxy handles image proxy requests
+func (h *Handlers) ImageProxy(c *gin.Context) {
+	// Parse image URL
+	imageURL, err := url.Parse(c.Query("url"))
+	if err != nil {
+		c.JSON(http.StatusBadRequest, gin.H{
+			"error":   "Invalid image URL",
+			"message": err.Error(),
+		})
+		return
+	}
+
+	// Fetch image data
+	resp, err := http.Get(imageURL.String())
+	if err != nil {
+		c.JSON(http.StatusInternalServerError, gin.H{
+			"error":   "Failed to fetch image",
+			"message": err.Error(),
+		})
+		return
+	}
+	defer resp.Body.Close()
+
+	// Check if the image is accessible
+	if resp.StatusCode != http.StatusOK {
+		c.JSON(resp.StatusCode, gin.H{
+			"error":   "Image not accessible",
+			"message": fmt.Sprintf("Image status code: %d", resp.StatusCode),
+		})
+		return
+	}
+
+	// Copy image data to response
+	c.Writer.Header().Set("Content-Type", resp.Header.Get("Content-Type"))
+	c.Writer.Header().Set("Content-Length", resp.Header.Get("Content-Length"))
+	c.Writer.Header().Set("Cache-Control", "public, max-age=31536000")
+	c.Writer.Header().Set("Expires", time.Now().Add(30*24*time.Hour).Format(http.TimeFormat))
+	io.Copy(c.Writer, resp.Body)
 }

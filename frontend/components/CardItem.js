@@ -1,4 +1,5 @@
 import { useState } from 'react';
+import Image from 'next/image';
 import { apiHelpers } from '../lib/api';
 
 export default function CardItem({ card }) {
@@ -29,21 +30,24 @@ export default function CardItem({ card }) {
       {/* Image Container */}
       <div className="relative aspect-[3/4] bg-gray-100 overflow-hidden">
         {imageLoading && (
-          <div className="absolute inset-0 flex items-center justify-center">
+          <div className="absolute inset-0 flex items-center justify-center z-10">
             <div className="animate-spin rounded-full h-8 w-8 border-b-2 border-blue-600"></div>
           </div>
         )}
         
         {!imageError ? (
-          <img
+          <Image
             src={imageUrl}
-            alt={card.name}
-            className={`w-full h-full object-cover transition-transform duration-200 group-hover:scale-105 ${
+            alt={card.name || 'Pokemon Card'}
+            fill
+            className={`object-cover transition-transform duration-200 group-hover:scale-105 ${
               imageLoading ? 'opacity-0' : 'opacity-100'
             }`}
             onLoad={handleImageLoad}
             onError={handleImageError}
             loading="lazy"
+            unoptimized={true}
+            crossOrigin="anonymous"
           />
         ) : (
           <div className="w-full h-full flex items-center justify-center bg-gray-200">
@@ -57,7 +61,7 @@ export default function CardItem({ card }) {
         )}
 
         {/* Stock Status Badge */}
-        <div className="absolute top-2 right-2">
+        <div className="absolute top-2 right-2 z-20">
           <span className={`inline-flex items-center px-2 py-1 rounded-full text-xs font-medium ${stockStatus.color} ${stockStatus.bgColor}`}>
             {stockStatus.text}
           </span>
@@ -65,7 +69,7 @@ export default function CardItem({ card }) {
 
         {/* External Link Indicator */}
         {externalUrl && (
-          <div className="absolute top-2 left-2 opacity-0 group-hover:opacity-100 transition-opacity duration-200">
+          <div className="absolute top-2 left-2 opacity-0 group-hover:opacity-100 transition-opacity duration-200 z-20">
             <div className="bg-black bg-opacity-75 text-white p-1 rounded">
               <svg className="h-4 w-4" fill="none" viewBox="0 0 24 24" stroke="currentColor">
                 <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M10 6H6a2 2 0 00-2 2v10a2 2 0 002 2h10a2 2 0 002-2v-4M14 4h6m0 0v6m0-6L10 14" />
