@@ -386,3 +386,106 @@ func (h *Handlers) ImageProxy(c *gin.Context) {
 	c.Writer.Header().Set("Expires", time.Now().Add(30*24*time.Hour).Format(http.TimeFormat))
 	io.Copy(c.Writer, resp.Body)
 }
+
+// ResetDatabase handles DELETE /api/database/reset
+func (h *Handlers) ResetDatabase(c *gin.Context) {
+	// Check if scraper is currently running
+	if h.scraper.IsRunning() {
+		c.JSON(http.StatusConflict, gin.H{
+			"error":   "Cannot reset database while scraping",
+			"message": "Please stop the current scrape job before resetting the database",
+		})
+		return
+	}
+
+	// Get current stats before deletion
+	var statsBeforeDeletion interface{}
+	if stats, err := h.searchEngine.GetStats(); err == nil {
+		statsBeforeDeletion = stats
+	}
+
+	// Clear all data
+	if clearable, ok := h.storage.(interface{ ClearAllData() error }); ok {
+		err := clearable.ClearAllData()
+		if err != nil {
+			c.JSON(http.StatusInternalServerError, gin.H{
+				"error":   "Failed to reset database",
+				"message": err.Error(),
+			})
+			return
+		}
+	} else {
+		c.JSON(http.StatusInternalServerError, gin.H{
+			"error":   "Database reset not supported",
+			"message": "The current storage implementation does not support database reset",
+		})
+		return
+	}
+
+	c.JSON(http.StatusOK, gin.H{
+		"message":            "Database successfully reset",
+		"reset_at":           time.Now().UTC(),
+		"stats_before_reset": statsBeforeDeletion,
+		"next_steps":         "You can now start a new scraping job to populate the database",
+	})
+}
+
+// RestartScrape handles POST /api/scrape/restart
+func (h *Handlers) RestartScrape(c *gin.Context) {
+	// Parse request body for scrape options
+	var req StartScrapeRequest
+	if err := c.ShouldBindJSON(&req); err != nil {
+		// Use default parameters if no body provided
+		req = StartScrapeRequest{
+			InStockOnly: true,
+			MaxPages:    0, // 0 means scrape all pages
+		}
+	}
+
+	// Stop current scraping if running
+	wasRunning := h.scraper.IsRunning()
+	if wasRunning {
+		h.scraper.Stop()
+		// Wait a moment for the scraper to fully stop
+		time.Sleep(2 * time.Second)
+	}
+
+	// Start scraping in a goroutine
+	go func() {
+		params := scraper.SearchParams{
+			InStockOnly: req.InStockOnly,
+		}
+
+		if req.MaxPages > 0 {
+			// Scrape limited pages
+			for page := 1; page <= req.MaxPages; page++ {
+				params.Page = page
+				url := scraper.BuildSearchURL(params)
+				_, err := h.scraper.ScrapePage(url)
+				if err != nil {
+					break
+				}
+			}
+		} else {
+			// Scrape all pages
+			h.scraper.ScrapeAllPages(params, nil)
+		}
+	}()
+
+	// Wait a moment to ensure scraping has started
+	time.Sleep(1 * time.Second)
+
+	status := h.scraper.GetStatus()
+	c.JSON(http.StatusOK, gin.H{
+		"message":       "Scraping restarted successfully",
+		"was_running":   wasRunning,
+		"started_at":    time.Now().UTC(),
+		"running":       h.scraper.IsRunning(),
+		"current_page":  status.CurrentPage,
+		"items_scraped": status.ItemsScraped,
+		"options": gin.H{
+			"in_stock_only": req.InStockOnly,
+			"max_pages":     req.MaxPages,
+		},
+	})
+}

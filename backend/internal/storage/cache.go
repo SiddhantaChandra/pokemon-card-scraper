@@ -316,6 +316,7 @@ type Storage interface {
 	GetAllInStock() ([]models.Card, error)
 	GetAllCards() ([]models.Card, error)
 	DeleteCard(id string) error
+	ClearAllData() error
 }
 
 // NewCachedStorage creates a new cached storage wrapper
@@ -395,6 +396,23 @@ func (cs *CachedStorage) DeleteCard(id string) error {
 	}
 
 	// Invalidate cache since data has changed
+	cs.cache.InvalidateAll()
+	return nil
+}
+
+// ClearAllData removes all cards and resets the database
+func (cs *CachedStorage) ClearAllData() error {
+	// First clear the underlying storage
+	if clearable, ok := cs.storage.(interface{ ClearAllData() error }); ok {
+		err := clearable.ClearAllData()
+		if err != nil {
+			return err
+		}
+	} else {
+		return fmt.Errorf("underlying storage does not support ClearAllData operation")
+	}
+
+	// Clear all cache entries
 	cs.cache.InvalidateAll()
 	return nil
 }

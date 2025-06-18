@@ -372,6 +372,42 @@ func (bs *BadgerStorage) GetAllCards() ([]models.Card, error) {
 	return allCards, err
 }
 
+// ClearAllData removes all cards and resets the database
+func (bs *BadgerStorage) ClearAllData() error {
+	log.Println("Starting database reset - clearing all data...")
+
+	return bs.db.Update(func(txn *badger.Txn) error {
+		// Get all keys to delete
+		opts := badger.DefaultIteratorOptions
+		opts.PrefetchValues = false // We only need keys
+		iterator := txn.NewIterator(opts)
+		defer iterator.Close()
+
+		var keysToDelete [][]byte
+
+		// Collect all keys
+		for iterator.Rewind(); iterator.Valid(); iterator.Next() {
+			item := iterator.Item()
+			key := item.Key()
+
+			// Make a copy of the key since it's only valid during iteration
+			keyCopy := make([]byte, len(key))
+			copy(keyCopy, key)
+			keysToDelete = append(keysToDelete, keyCopy)
+		}
+
+		// Delete all keys
+		for _, key := range keysToDelete {
+			if err := txn.Delete(key); err != nil {
+				return fmt.Errorf("failed to delete key %s: %v", string(key), err)
+			}
+		}
+
+		log.Printf("Successfully deleted %d records from database", len(keysToDelete))
+		return nil
+	})
+}
+
 // Helper functions
 
 func (bs *BadgerStorage) cardKey(id string) []byte {

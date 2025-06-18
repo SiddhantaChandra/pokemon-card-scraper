@@ -115,6 +115,14 @@ export const scrapeAPI = {
   stop: () => {
     return api.post('/scrape/stop');
   },
+
+  // Restart scraping (stop current job if running, then start new one)
+  restart: (options = {}) => {
+    return api.post('/scrape/restart', {
+      in_stock_only: options.inStockOnly || true,
+      max_pages: options.maxPages || 0, // 0 means all pages
+    });
+  },
 };
 
 // Statistics API endpoints
@@ -127,6 +135,14 @@ export const statsAPI = {
   // Get available sort options
   getSortOptions: () => {
     return api.get('/sort-options');
+  },
+};
+
+// Database management API endpoints
+export const databaseAPI = {
+  // Reset database (clear all data)
+  reset: () => {
+    return api.delete('/database/reset');
   },
 };
 

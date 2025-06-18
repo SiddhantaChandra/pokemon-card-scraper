@@ -135,6 +135,12 @@ func (s *Server) setupRoutes() {
 		// Image proxy endpoint
 		api.GET("/proxy-image", s.handlers.ImageProxy) // GET /api/proxy-image
 
+		// Database management endpoints
+		database := api.Group("/database")
+		{
+			database.DELETE("/reset", s.handlers.ResetDatabase) // DELETE /api/database/reset
+		}
+
 		// Card endpoints
 		cards := api.Group("/cards")
 		{
@@ -150,6 +156,7 @@ func (s *Server) setupRoutes() {
 			scrape.POST("/start", s.handlers.StartScrape)     // POST /api/scrape/start
 			scrape.GET("/status", s.handlers.GetScrapeStatus) // GET /api/scrape/status
 			scrape.POST("/stop", s.handlers.StopScrape)       // POST /api/scrape/stop
+			scrape.POST("/restart", s.handlers.RestartScrape) // POST /api/scrape/restart
 		}
 
 		// Statistics endpoints

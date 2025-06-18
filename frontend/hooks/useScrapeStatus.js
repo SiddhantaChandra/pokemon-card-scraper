@@ -80,6 +80,26 @@ export function useScrapeStatus() {
     }
   }, [mutateScrape, mutateStats]);
 
+  // Restart scraping
+  const restartScraping = useCallback(async (options = {}) => {
+    setIsStarting(true);
+    try {
+      await scrapeAPI.restart(options);
+      // Refresh both scrape status and stats
+      mutateScrape();
+      mutateStats();
+      return { success: true };
+    } catch (error) {
+      console.error('Failed to restart scraping:', error);
+      return { 
+        success: false, 
+        error: error.message || 'Failed to restart scraping' 
+      };
+    } finally {
+      setIsStarting(false);
+    }
+  }, [mutateScrape, mutateStats]);
+
   // Calculate progress percentage
   const getProgressPercentage = useCallback(() => {
     if (!scrapeData || !scrapeData.running || !scrapeData.total_pages) return 0;
@@ -168,10 +188,12 @@ export function useScrapeStatus() {
     // Actions
     startScraping,
     stopScraping,
+    restartScraping,
     refresh,
     
     // Helper methods
     canStart: !scrapeData?.running && !isStarting,
     canStop: scrapeData?.running && !isStopping,
+    canRestart: !isStarting,
   };
 } 

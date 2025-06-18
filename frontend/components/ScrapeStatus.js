@@ -1,8 +1,11 @@
 import { useState } from 'react';
 import { useScrapeStatus } from '../hooks/useScrapeStatus';
+import { databaseAPI } from '../lib/api';
 
 export default function ScrapeStatus({ className = '' }) {
   const [showDetails, setShowDetails] = useState(false);
+  const [showResetConfirm, setShowResetConfirm] = useState(false);
+  const [isResetting, setIsResetting] = useState(false);
   const [scrapeOptions, setScrapeOptions] = useState({
     inStockOnly: true,
     maxPages: 0 // 0 means all pages
@@ -25,9 +28,11 @@ export default function ScrapeStatus({ className = '' }) {
     error,
     startScraping,
     stopScraping,
+    restartScraping,
     refresh,
     canStart,
-    canStop
+    canStop,
+    canRestart
   } = useScrapeStatus();
 
   const handleStartScraping = async () => {
@@ -41,6 +46,34 @@ export default function ScrapeStatus({ className = '' }) {
     const result = await stopScraping();
     if (!result.success) {
       alert(`Failed to stop scraping: ${result.error}`);
+    }
+  };
+
+  const handleRestartScraping = async () => {
+    const result = await restartScraping(scrapeOptions);
+    if (!result.success) {
+      alert(`Failed to restart scraping: ${result.error}`);
+    }
+  };
+
+  const handleResetDatabase = async () => {
+    if (!showResetConfirm) {
+      setShowResetConfirm(true);
+      return;
+    }
+
+    setIsResetting(true);
+    try {
+      const response = await databaseAPI.reset();
+      alert(`Database reset successful! ${response.data.message}`);
+      setShowResetConfirm(false);
+      // Refresh stats after reset
+      refresh();
+    } catch (error) {
+      console.error('Failed to reset database:', error);
+      alert(`Failed to reset database: ${error.response?.data?.message || error.message}`);
+    } finally {
+      setIsResetting(false);
     }
   };
 
@@ -266,51 +299,122 @@ export default function ScrapeStatus({ className = '' }) {
           )}
 
           {/* Control Buttons */}
-          <div className="flex items-center space-x-3">
-            {canStart && (
-              <button
-                onClick={handleStartScraping}
-                disabled={isStarting}
-                className="flex items-center space-x-2 bg-green-600 hover:bg-green-700 disabled:bg-green-400 text-white px-4 py-2 rounded-md font-medium transition-colors duration-200"
-              >
-                {isStarting ? (
-                  <>
-                    <div className="animate-spin rounded-full h-4 w-4 border-b-2 border-white"></div>
-                    <span>Starting...</span>
-                  </>
-                ) : (
-                  <>
-                    <svg className="h-4 w-4" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-                      <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M14.828 14.828a4 4 0 01-5.656 0M9 10h1m4 0h1m-6 4h1m4 0h1m-6-8h1m4 0h1M7 21l4-16m2 16l4-16" />
-                    </svg>
-                    <span>Start Scraping</span>
-                  </>
-                )}
-              </button>
-            )}
+          <div className="flex items-center justify-between">
+            <div className="flex items-center space-x-3">
+              {canStart && (
+                <button
+                  onClick={handleStartScraping}
+                  disabled={isStarting}
+                  className="flex items-center space-x-2 bg-green-600 hover:bg-green-700 disabled:bg-green-400 text-white px-4 py-2 rounded-md font-medium transition-colors duration-200"
+                >
+                  {isStarting ? (
+                    <>
+                      <div className="animate-spin rounded-full h-4 w-4 border-b-2 border-white"></div>
+                      <span>Starting...</span>
+                    </>
+                  ) : (
+                    <>
+                      <svg className="h-4 w-4" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                        <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M14.828 14.828a4 4 0 01-5.656 0M9 10h1m4 0h1m-6 4h1m4 0h1m-6-8h1m4 0h1M7 21l4-16m2 16l4-16" />
+                      </svg>
+                      <span>Start Scraping</span>
+                    </>
+                  )}
+                </button>
+              )}
 
-            {canStop && (
-              <button
-                onClick={handleStopScraping}
-                disabled={isStopping}
-                className="flex items-center space-x-2 bg-red-600 hover:bg-red-700 disabled:bg-red-400 text-white px-4 py-2 rounded-md font-medium transition-colors duration-200"
-              >
-                {isStopping ? (
-                  <>
-                    <div className="animate-spin rounded-full h-4 w-4 border-b-2 border-white"></div>
-                    <span>Stopping...</span>
-                  </>
-                ) : (
-                  <>
-                    <svg className="h-4 w-4" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-                      <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M21 12a9 9 0 11-18 0 9 9 0 0118 0z" />
-                      <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 10h6v4H9z" />
-                    </svg>
-                    <span>Stop Scraping</span>
-                  </>
-                )}
-              </button>
-            )}
+              {canStop && (
+                <button
+                  onClick={handleStopScraping}
+                  disabled={isStopping}
+                  className="flex items-center space-x-2 bg-red-600 hover:bg-red-700 disabled:bg-red-400 text-white px-4 py-2 rounded-md font-medium transition-colors duration-200"
+                >
+                  {isStopping ? (
+                    <>
+                      <div className="animate-spin rounded-full h-4 w-4 border-b-2 border-white"></div>
+                      <span>Stopping...</span>
+                    </>
+                  ) : (
+                    <>
+                      <svg className="h-4 w-4" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                        <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M21 12a9 9 0 11-18 0 9 9 0 0118 0z" />
+                        <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 10h6v4H9z" />
+                      </svg>
+                      <span>Stop Scraping</span>
+                    </>
+                  )}
+                </button>
+              )}
+
+              {canRestart && (
+                <button
+                  onClick={handleRestartScraping}
+                  disabled={isStarting}
+                  className="flex items-center space-x-2 bg-blue-600 hover:bg-blue-700 disabled:bg-blue-400 text-white px-4 py-2 rounded-md font-medium transition-colors duration-200"
+                >
+                  {isStarting ? (
+                    <>
+                      <div className="animate-spin rounded-full h-4 w-4 border-b-2 border-white"></div>
+                      <span>Restarting...</span>
+                    </>
+                  ) : (
+                    <>
+                      <svg className="h-4 w-4" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                        <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M4 4v5h.582m15.356 2A8.001 8.001 0 004.582 9m0 0H9m11 11v-5h-.581m0 0a8.003 8.003 0 01-15.357-2m15.357 2H15" />
+                      </svg>
+                      <span>Restart Scraping</span>
+                    </>
+                  )}
+                </button>
+              )}
+            </div>
+
+            {/* Database Reset Button */}
+            <div className="flex items-center space-x-2">
+              {!isRunning && totalCardsInDatabase > 0 && (
+                <>
+                  {!showResetConfirm ? (
+                    <button
+                      onClick={handleResetDatabase}
+                      disabled={isResetting}
+                      className="flex items-center space-x-2 bg-orange-600 hover:bg-orange-700 disabled:bg-orange-400 text-white px-3 py-2 rounded-md text-sm font-medium transition-colors duration-200"
+                    >
+                      <svg className="h-4 w-4" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                        <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M19 7l-.867 12.142A2 2 0 0116.138 21H7.862a2 2 0 01-1.995-1.858L5 7m5 4v6m4-6v6m1-10V4a1 1 0 00-1-1h-4a1 1 0 00-1 1v3M4 7h16" />
+                      </svg>
+                      <span>Reset Database</span>
+                    </button>
+                  ) : (
+                    <div className="flex items-center space-x-2">
+                      <span className="text-sm text-orange-600 font-medium">
+                        Delete all {totalCardsInDatabase.toLocaleString()} cards?
+                      </span>
+                      <button
+                        onClick={handleResetDatabase}
+                        disabled={isResetting}
+                        className="flex items-center space-x-1 bg-red-600 hover:bg-red-700 disabled:bg-red-400 text-white px-3 py-1 rounded text-sm font-medium transition-colors duration-200"
+                      >
+                        {isResetting ? (
+                          <>
+                            <div className="animate-spin rounded-full h-3 w-3 border-b-2 border-white"></div>
+                            <span>Deleting...</span>
+                          </>
+                        ) : (
+                          <span>Confirm Delete</span>
+                        )}
+                      </button>
+                      <button
+                        onClick={() => setShowResetConfirm(false)}
+                        disabled={isResetting}
+                        className="px-3 py-1 border border-gray-300 rounded text-sm text-gray-700 hover:bg-gray-50 transition-colors duration-200"
+                      >
+                        Cancel
+                      </button>
+                    </div>
+                  )}
+                </>
+              )}
+            </div>
           </div>
         </div>
       )}
