@@ -31,6 +31,30 @@ export default function SearchBar({
     selectSuggestion
   } = useSuggestionState();
 
+  // Available sort options
+  const availableSortOptions = [
+    { value: 'date_desc', label: 'Newest First' },
+    { value: 'date_asc', label: 'Oldest First' },
+    { value: 'price_asc', label: 'Price: Low to High' },
+    { value: 'price_desc', label: 'Price: High to Low' },
+    { value: 'name_asc', label: 'Name: A to Z' },
+    { value: 'name_desc', label: 'Name: Z to A' },
+    { value: 'stock_desc', label: 'Stock: High to Low' }
+  ];
+
+  // Available condition options
+  const conditionOptions = [
+    { value: 'Perfect', label: 'Perfect', color: 'bg-green-100 text-green-800' },
+    { value: 'A+', label: 'A+', color: 'bg-blue-100 text-blue-800' },
+    { value: 'A', label: 'A', color: 'bg-blue-100 text-blue-800' },
+    { value: 'A-', label: 'A-', color: 'bg-blue-100 text-blue-800' },
+    { value: 'B+', label: 'B+', color: 'bg-yellow-100 text-yellow-800' },
+    { value: 'B', label: 'B', color: 'bg-yellow-100 text-yellow-800' },
+    { value: 'B-', label: 'B-', color: 'bg-yellow-100 text-yellow-800' },
+    { value: 'C', label: 'C', color: 'bg-red-100 text-red-800' },
+    { value: 'D', label: 'D', color: 'bg-red-100 text-red-800' }
+  ];
+
   // Handle search input changes
   const handleQueryChange = (e) => {
     const value = e.target.value;
@@ -80,7 +104,7 @@ export default function SearchBar({
 
   // Handle filter changes
   const handleFilterChange = (key, value) => {
-    onFiltersChange({ ...filters, [key]: value });
+    onFiltersChange({ ...filters, [key]: value, page: 1 });
   };
 
   // Handle price range change
@@ -90,7 +114,7 @@ export default function SearchBar({
 
   // Apply price range filter
   const applyPriceRange = () => {
-    const newFilters = { ...filters };
+    const newFilters = { ...filters, page: 1 };
     
     if (tempPriceRange.min) {
       newFilters.min_price = parseFloat(tempPriceRange.min);
@@ -105,6 +129,20 @@ export default function SearchBar({
     }
     
     onFiltersChange(newFilters);
+  };
+
+  // Handle condition filter changes
+  const handleConditionChange = (condition) => {
+    const currentConditions = filters.conditions || [];
+    let newConditions;
+    
+    if (currentConditions.includes(condition)) {
+      newConditions = currentConditions.filter(c => c !== condition);
+    } else {
+      newConditions = [...currentConditions, condition];
+    }
+    
+    handleFilterChange('conditions', newConditions);
   };
 
   // Clear all filters
@@ -139,12 +177,14 @@ export default function SearchBar({
     });
   }, [filters.min_price, filters.max_price]);
 
-  const hasActiveFilters = query || filters.min_price || filters.max_price || filters.in_stock || filters.sort !== 'date_desc' || (filters.conditions && filters.conditions.length > 0);
+  const hasActiveFilters = query || filters.min_price || filters.max_price || filters.in_stock || 
+    filters.set || filters.rarity || (filters.conditions && filters.conditions.length > 0) || 
+    filters.sort !== 'date_desc';
 
   return (
     <div className={`bg-white rounded-lg shadow-md border border-gray-200 ${className}`}>
       {/* Main Search Bar */}
-      <div className="p-4">
+      <div className="p-6">
         <div className="relative" ref={suggestionsRef}>
           {/* Search Input */}
           <div className="relative">
@@ -161,7 +201,7 @@ export default function SearchBar({
               onChange={handleQueryChange}
               onKeyDown={handleKeyDown}
               onFocus={() => query.length > 2 && openSuggestions()}
-              className="block w-full pl-10 pr-12 py-3 border border-gray-300 rounded-md leading-5 bg-white placeholder-gray-500 focus:outline-none focus:placeholder-gray-400 focus:ring-1 focus:ring-blue-500 focus:border-blue-500"
+              className="block w-full pl-10 pr-12 py-3 border border-gray-300 rounded-lg leading-5 bg-white placeholder-gray-500 focus:outline-none focus:placeholder-gray-400 focus:ring-2 focus:ring-blue-500 focus:border-blue-500 text-lg"
             />
             {query && (
               <button
@@ -177,12 +217,12 @@ export default function SearchBar({
 
           {/* Search Suggestions */}
           {suggestionsOpen && suggestions.length > 0 && (
-            <div className="absolute z-10 mt-1 w-full bg-white shadow-lg rounded-md border border-gray-200 max-h-60 overflow-auto">
+            <div className="absolute z-10 mt-1 w-full bg-white shadow-lg rounded-lg border border-gray-200 max-h-60 overflow-auto">
               {suggestions.map((suggestion, index) => (
                 <button
                   key={suggestion}
                   onClick={() => handleSuggestionClick(suggestion)}
-                  className={`w-full text-left px-4 py-2 hover:bg-gray-50 ${
+                  className={`w-full text-left px-4 py-3 hover:bg-gray-50 ${
                     index === selectedIndex ? 'bg-blue-50 text-blue-600' : 'text-gray-900'
                   }`}
                 >
@@ -198,137 +238,147 @@ export default function SearchBar({
           <div className="flex items-center space-x-4">
             <button
               onClick={() => setShowFilters(!showFilters)}
-              className="flex items-center space-x-2 text-sm text-gray-600 hover:text-gray-900"
+              className={`flex items-center space-x-2 px-4 py-2 text-sm font-medium rounded-lg transition-colors ${
+                showFilters
+                  ? 'bg-blue-100 text-blue-700 border border-blue-200'
+                  : 'bg-gray-100 text-gray-700 border border-gray-200 hover:bg-gray-200'
+              }`}
             >
               <svg className="h-4 w-4" fill="none" viewBox="0 0 24 24" stroke="currentColor">
                 <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 6V4m0 2a2 2 0 100 4m0-4a2 2 0 110 4m-6 8a2 2 0 100-4m0 4a2 2 0 100 4m0-4v2m0-6V4m6 6v10m6-2a2 2 0 100-4m0 4a2 2 0 100 4m0-4v2m0-6V4" />
               </svg>
               <span>Filters</span>
-              {showFilters ? (
-                <svg className="h-4 w-4" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M5 15l7-7 7 7" />
-                </svg>
-              ) : (
-                <svg className="h-4 w-4" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M19 9l-7 7-7-7" />
-                </svg>
+              {hasActiveFilters && (
+                <span className="ml-1 inline-flex items-center justify-center w-5 h-5 text-xs font-medium text-white bg-blue-600 rounded-full">
+                  !
+                </span>
               )}
             </button>
 
-            {hasActiveFilters && (
-              <button
-                onClick={clearFilters}
-                className="text-sm text-red-600 hover:text-red-800 flex items-center space-x-1"
+            {/* Sort Dropdown */}
+            <div className="relative">
+              <select
+                value={filters.sort || 'date_desc'}
+                onChange={(e) => handleFilterChange('sort', e.target.value)}
+                className="appearance-none bg-white border border-gray-200 rounded-lg px-4 py-2 pr-8 text-sm font-medium text-gray-700 hover:border-gray-300 focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-blue-500"
               >
-                <svg className="h-4 w-4" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M6 18L18 6M6 6l12 12" />
+                {availableSortOptions.map(option => (
+                  <option key={option.value} value={option.value}>
+                    {option.label}
+                  </option>
+                ))}
+              </select>
+              <div className="absolute inset-y-0 right-0 flex items-center pr-2 pointer-events-none">
+                <svg className="h-4 w-4 text-gray-400" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M19 9l-7 7-7-7" />
                 </svg>
-                <span>Clear All</span>
-              </button>
-            )}
+              </div>
+            </div>
           </div>
 
-          {/* Sort Dropdown */}
-          <div className="flex items-center space-x-2">
-            <label className="text-sm text-gray-600">Sort:</label>
-            <select
-              value={filters.sort || 'date_desc'}
-              onChange={(e) => handleFilterChange('sort', e.target.value)}
-              className="text-sm border border-gray-300 rounded px-2 py-1 focus:outline-none focus:ring-1 focus:ring-blue-500 focus:border-blue-500"
+          {hasActiveFilters && (
+            <button
+              onClick={clearFilters}
+              className="text-sm text-gray-600 hover:text-gray-800 font-medium"
             >
-              <option value="date_desc">Newest First</option>
-              <option value="date_asc">Oldest First</option>
-              <option value="price_asc">Price: Low to High</option>
-              <option value="price_desc">Price: High to Low</option>
-              <option value="name_asc">Name: A to Z</option>
-              <option value="name_desc">Name: Z to A</option>
-              <option value="stock_desc">Stock: High to Low</option>
-            </select>
-          </div>
+              Clear All Filters
+            </button>
+          )}
         </div>
       </div>
 
       {/* Advanced Filters */}
       {showFilters && (
-        <div className="border-t border-gray-200 p-4 bg-gray-50">
-          <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-4">
-            {/* Price Range */}
-            <div>
-              <label className="block text-sm font-medium text-gray-700 mb-2">Price Range (¥)</label>
-              <div className="flex items-center space-x-2">
+        <div className="border-t border-gray-200 bg-gray-50">
+          <div className="p-6">
+            <div className="grid grid-cols-1 lg:grid-cols-2 xl:grid-cols-3 gap-6">
+              
+              {/* Price Range */}
+              <div className="space-y-3">
+                <label className="block text-sm font-medium text-gray-700">Price Range (¥)</label>
+                <div className="flex space-x-2">
+                  <input
+                    type="number"
+                    placeholder="Min"
+                    value={tempPriceRange.min}
+                    onChange={(e) => handlePriceRangeChange('min', e.target.value)}
+                    onBlur={applyPriceRange}
+                    onKeyPress={(e) => e.key === 'Enter' && applyPriceRange()}
+                    className="flex-1 px-3 py-2 border border-gray-300 rounded-md text-sm focus:outline-none focus:ring-1 focus:ring-blue-500 focus:border-blue-500"
+                  />
+                  <span className="self-center text-gray-500">-</span>
+                  <input
+                    type="number"
+                    placeholder="Max"
+                    value={tempPriceRange.max}
+                    onChange={(e) => handlePriceRangeChange('max', e.target.value)}
+                    onBlur={applyPriceRange}
+                    onKeyPress={(e) => e.key === 'Enter' && applyPriceRange()}
+                    className="flex-1 px-3 py-2 border border-gray-300 rounded-md text-sm focus:outline-none focus:ring-1 focus:ring-blue-500 focus:border-blue-500"
+                  />
+                </div>
+              </div>
+
+              {/* Set Name */}
+              <div className="space-y-3">
+                <label className="block text-sm font-medium text-gray-700">Set Name</label>
                 <input
-                  type="number"
-                  placeholder="Min"
-                  value={tempPriceRange.min}
-                  onChange={(e) => handlePriceRangeChange('min', e.target.value)}
-                  onBlur={applyPriceRange}
-                  className="w-full px-3 py-2 border border-gray-300 rounded-md text-sm focus:outline-none focus:ring-1 focus:ring-blue-500 focus:border-blue-500"
-                />
-                <span className="text-gray-500">-</span>
-                <input
-                  type="number"
-                  placeholder="Max"
-                  value={tempPriceRange.max}
-                  onChange={(e) => handlePriceRangeChange('max', e.target.value)}
-                  onBlur={applyPriceRange}
+                  type="text"
+                  placeholder="e.g., Base Set, Jungle..."
+                  value={filters.set || ''}
+                  onChange={(e) => handleFilterChange('set', e.target.value)}
                   className="w-full px-3 py-2 border border-gray-300 rounded-md text-sm focus:outline-none focus:ring-1 focus:ring-blue-500 focus:border-blue-500"
                 />
               </div>
-            </div>
 
-            {/* Stock Filter */}
-            <div>
-              <label className="block text-sm font-medium text-gray-700 mb-2">Availability</label>
-              <label className="flex items-center">
+              {/* Rarity */}
+              <div className="space-y-3">
+                <label className="block text-sm font-medium text-gray-700">Rarity</label>
                 <input
-                  type="checkbox"
-                  checked={filters.in_stock || false}
-                  onChange={(e) => handleFilterChange('in_stock', e.target.checked)}
-                  className="rounded border-gray-300 text-blue-600 focus:ring-blue-500"
+                  type="text"
+                  placeholder="e.g., Rare, Common, Uncommon..."
+                  value={filters.rarity || ''}
+                  onChange={(e) => handleFilterChange('rarity', e.target.value)}
+                  className="w-full px-3 py-2 border border-gray-300 rounded-md text-sm focus:outline-none focus:ring-1 focus:ring-blue-500 focus:border-blue-500"
                 />
-                <span className="ml-2 text-sm text-gray-700">In Stock Only</span>
-              </label>
+              </div>
+
+              {/* Stock Filter */}
+              <div className="space-y-3">
+                <label className="block text-sm font-medium text-gray-700">Availability</label>
+                <label className="flex items-center">
+                  <input
+                    type="checkbox"
+                    checked={filters.in_stock || false}
+                    onChange={(e) => handleFilterChange('in_stock', e.target.checked)}
+                    className="h-4 w-4 text-blue-600 focus:ring-blue-500 border-gray-300 rounded"
+                  />
+                  <span className="ml-2 text-sm text-gray-700">In stock only</span>
+                </label>
+              </div>
             </div>
 
-            {/* Page Size */}
-            <div>
-              <label className="block text-sm font-medium text-gray-700 mb-2">Items per Page</label>
-              <select
-                value={filters.page_size || 20}
-                onChange={(e) => handleFilterChange('page_size', parseInt(e.target.value))}
-                className="w-full px-3 py-2 border border-gray-300 rounded-md text-sm focus:outline-none focus:ring-1 focus:ring-blue-500 focus:border-blue-500"
-              >
-                <option value={10}>10</option>
-                <option value={20}>20</option>
-                <option value={50}>50</option>
-                <option value={100}>100</option>
-              </select>
-            </div>
-
-            {/* Condition Filter */}
-            <div>
-              <label className="block text-sm font-medium text-gray-700 mb-2">Condition</label>
-              <select
-                multiple
-                value={filters.conditions || []}
-                onChange={(e) => {
-                  const selected = Array.from(e.target.selectedOptions, option => option.value);
-                  handleFilterChange('conditions', selected);
-                }}
-                className="w-full px-3 py-2 border border-gray-300 rounded-md text-sm focus:outline-none focus:ring-1 focus:ring-blue-500 focus:border-blue-500"
-                size="5"
-              >
-                <option value="Perfect">Perfect</option>
-                <option value="A+">A+</option>
-                <option value="A">A</option>
-                <option value="A-">A-</option>
-                <option value="B+">B+</option>
-                <option value="B">B</option>
-                <option value="B-">B-</option>
-                <option value="C">C</option>
-                <option value="D">D</option>
-              </select>
-              <p className="text-xs text-gray-500 mt-1">Hold Ctrl/Cmd to select multiple</p>
+            {/* Card Conditions */}
+            <div className="mt-6">
+              <label className="block text-sm font-medium text-gray-700 mb-3">Card Condition</label>
+              <div className="flex flex-wrap gap-2">
+                {conditionOptions.map(condition => (
+                  <button
+                    key={condition.value}
+                    onClick={() => handleConditionChange(condition.value)}
+                    className={`inline-flex items-center px-3 py-1 rounded-full text-xs font-medium transition-all ${
+                      (filters.conditions || []).includes(condition.value)
+                        ? `${condition.color} ring-2 ring-offset-1 ring-blue-500`
+                        : 'bg-gray-100 text-gray-700 hover:bg-gray-200'
+                    }`}
+                  >
+                    {condition.label}
+                  </button>
+                ))}
+              </div>
+              <p className="text-xs text-gray-500 mt-2">
+                Click to select multiple conditions. Perfect = No condition indicator in title.
+              </p>
             </div>
           </div>
         </div>
