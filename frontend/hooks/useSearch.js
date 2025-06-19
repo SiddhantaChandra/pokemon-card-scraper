@@ -98,6 +98,9 @@ export function useSearch(initialQuery = '', initialFilters = {}) {
     if (filters.in_stock) params.set('in_stock', 'true');
     if (filters.set) params.set('set', filters.set);
     if (filters.rarity) params.set('rarity', filters.rarity);
+    if (filters.conditions && filters.conditions.length > 0) {
+      params.set('conditions', filters.conditions.join(','));
+    }
     if (filters.sort !== 'date_desc') params.set('sort', filters.sort);
     
     return params.toString();
@@ -116,6 +119,7 @@ export function useSearch(initialQuery = '', initialFilters = {}) {
       in_stock: params.get('in_stock') === 'true',
       set: params.get('set') || undefined,
       rarity: params.get('rarity') || undefined,
+      conditions: params.get('conditions')?.split(',').filter(c => c) || [],
       sort: params.get('sort') || 'date_desc',
     });
   }, []);
@@ -129,6 +133,7 @@ export function useSearch(initialQuery = '', initialFilters = {}) {
       filters.in_stock ||
       filters.set ||
       filters.rarity ||
+      (filters.conditions && filters.conditions.length > 0) ||
       filters.sort !== 'date_desc'
     );
   }, [query, filters]);

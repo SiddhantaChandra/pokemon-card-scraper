@@ -139,7 +139,7 @@ export default function SearchBar({
     });
   }, [filters.min_price, filters.max_price]);
 
-  const hasActiveFilters = query || filters.min_price || filters.max_price || filters.in_stock || filters.sort !== 'date_desc';
+  const hasActiveFilters = query || filters.min_price || filters.max_price || filters.in_stock || filters.sort !== 'date_desc' || (filters.conditions && filters.conditions.length > 0);
 
   return (
     <div className={`bg-white rounded-lg shadow-md border border-gray-200 ${className}`}>
@@ -251,7 +251,7 @@ export default function SearchBar({
       {/* Advanced Filters */}
       {showFilters && (
         <div className="border-t border-gray-200 p-4 bg-gray-50">
-          <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
+          <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-4">
             {/* Price Range */}
             <div>
               <label className="block text-sm font-medium text-gray-700 mb-2">Price Range (¥)</label>
@@ -303,6 +303,32 @@ export default function SearchBar({
                 <option value={50}>50</option>
                 <option value={100}>100</option>
               </select>
+            </div>
+
+            {/* Condition Filter */}
+            <div>
+              <label className="block text-sm font-medium text-gray-700 mb-2">Condition</label>
+              <select
+                multiple
+                value={filters.conditions || []}
+                onChange={(e) => {
+                  const selected = Array.from(e.target.selectedOptions, option => option.value);
+                  handleFilterChange('conditions', selected);
+                }}
+                className="w-full px-3 py-2 border border-gray-300 rounded-md text-sm focus:outline-none focus:ring-1 focus:ring-blue-500 focus:border-blue-500"
+                size="5"
+              >
+                <option value="Perfect">Perfect</option>
+                <option value="A+">A+</option>
+                <option value="A">A</option>
+                <option value="A-">A-</option>
+                <option value="B+">B+</option>
+                <option value="B">B</option>
+                <option value="B-">B-</option>
+                <option value="C">C</option>
+                <option value="D">D</option>
+              </select>
+              <p className="text-xs text-gray-500 mt-1">Hold Ctrl/Cmd to select multiple</p>
             </div>
           </div>
         </div>

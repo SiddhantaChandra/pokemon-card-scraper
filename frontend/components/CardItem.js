@@ -67,6 +67,20 @@ export default function CardItem({ card }) {
           </span>
         </div>
 
+        {/* Condition Badge */}
+        {card.condition && (
+          <div className="absolute bottom-2 right-2 z-20">
+            <span className={`inline-flex items-center px-2 py-1 rounded-full text-xs font-medium ${
+              card.condition === 'Perfect' ? 'bg-green-100 text-green-800' :
+              card.condition.startsWith('A') ? 'bg-blue-100 text-blue-800' :
+              card.condition.startsWith('B') ? 'bg-yellow-100 text-yellow-800' :
+              'bg-red-100 text-red-800'
+            }`}>
+              {card.condition}
+            </span>
+          </div>
+        )}
+
         {/* External Link Indicator */}
         {externalUrl && (
           <div className="absolute top-2 left-2 opacity-0 group-hover:opacity-100 transition-opacity duration-200 z-20">

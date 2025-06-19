@@ -422,8 +422,27 @@ func (ps *ParallelScraper) Stop() {
 	ps.cancel()
 }
 
-// GetStatus returns the current scraping status
-func (ps *ParallelScraper) GetStatus() ParallelScrapingStatus {
+// GetStatus returns the current scraping status (compatible with interface)
+func (ps *ParallelScraper) GetStatus() ScrapingStatus {
+	ps.mu.RLock()
+	defer ps.mu.RUnlock()
+
+	// Convert parallel status to regular status for interface compatibility
+	return ScrapingStatus{
+		StartTime:              ps.status.StartTime,
+		LastUpdated:            ps.status.LastUpdated,
+		CurrentPage:            ps.status.PagesProcessed,
+		TotalPages:             ps.status.TotalPages,
+		ItemsScraped:           ps.status.CardsFound,
+		CardsPerMinute:         0,     // Calculate if needed
+		EstimatedTimeRemaining: nil,   // Calculate if needed
+		IsPaused:               false, // Parallel scraper doesn't support pause yet
+		PausedAt:               nil,
+	}
+}
+
+// GetParallelStatus returns the native parallel scraping status
+func (ps *ParallelScraper) GetParallelStatus() ParallelScrapingStatus {
 	ps.mu.RLock()
 	defer ps.mu.RUnlock()
 	return ps.status
@@ -434,4 +453,57 @@ func (ps *ParallelScraper) IsRunning() bool {
 	ps.mu.RLock()
 	defer ps.mu.RUnlock()
 	return ps.running
+}
+
+// IsPaused returns whether the scraper is currently paused (always false for parallel scraper)
+func (ps *ParallelScraper) IsPaused() bool {
+	// Parallel scraper doesn't support pause/resume yet
+	return false
+}
+
+// Pause pauses the scraper (not implemented for parallel scraper)
+func (ps *ParallelScraper) Pause() bool {
+	// Parallel scraper doesn't support pause/resume yet
+	return false
+}
+
+// Resume resumes the scraper (not implemented for parallel scraper)
+func (ps *ParallelScraper) Resume() bool {
+	// Parallel scraper doesn't support pause/resume yet
+	return false
+}
+
+// ScrapeAllPages implements the interface method (wrapper for ScrapeAllPagesParallel)
+func (ps *ParallelScraper) ScrapeAllPages(params SearchParams, progressCallback func(ScrapeProgress)) error {
+	return ps.ScrapeAllPagesParallel(params, progressCallback)
+}
+
+// ScrapePage scrapes a single page (simplified version for interface compatibility)
+func (ps *ParallelScraper) ScrapePage(pageURL string) ([]models.Card, error) {
+	collector := ps.collectorPool.Get()
+	defer ps.collectorPool.Put(collector)
+
+	var pageCards []models.Card
+	var parseError error
+
+	collector.OnHTML("html", func(e *colly.HTMLElement) {
+		pageInfo, err := ParseProductPage(e.DOM, ps.config.BaseURL)
+		if err != nil {
+			parseError = fmt.Errorf("failed to parse page: %w", err)
+			return
+		}
+		pageCards = pageInfo.Cards
+	})
+
+	if err := collector.Visit(pageURL); err != nil {
+		return nil, fmt.Errorf("failed to visit page: %w", err)
+	}
+
+	collector.Wait()
+
+	if parseError != nil {
+		return nil, parseError
+	}
+
+	return pageCards, nil
 }

@@ -10,6 +10,18 @@ import (
 	"github.com/gocolly/colly/v2"
 )
 
+// ScraperInterface defines common methods for all scraper types
+type ScraperInterface interface {
+	IsRunning() bool
+	IsPaused() bool
+	GetStatus() ScrapingStatus
+	Stop()
+	Pause() bool
+	Resume() bool
+	ScrapeAllPages(params SearchParams, progressCallback func(ScrapeProgress)) error
+	ScrapePage(pageURL string) ([]models.Card, error)
+}
+
 // Scraper represents the main scraping engine
 type Scraper struct {
 	config      *CollectorConfig

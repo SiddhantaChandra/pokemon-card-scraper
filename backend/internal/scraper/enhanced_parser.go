@@ -20,7 +20,7 @@ type PageInfo struct {
 // ParseProductPage parses a search results page using the specific selectors
 func ParseProductPage(doc *goquery.Selection, baseURL string) (*PageInfo, error) {
 	result := &PageInfo{}
-	
+
 	// Parse products using the specific selector
 	doc.Find(".product-item.product-item--vertical").Each(func(i int, s *goquery.Selection) {
 		card := parseProductItem(s, baseURL)
@@ -28,11 +28,11 @@ func ParseProductPage(doc *goquery.Selection, baseURL string) (*PageInfo, error)
 			result.Cards = append(result.Cards, *card)
 		}
 	})
-	
+
 	// Parse pagination info (only needed once)
 	result.TotalPages = parseTotalPages(doc)
 	result.TotalItems = parseTotalItems(doc)
-	
+
 	return result, nil
 }
 
@@ -50,7 +50,7 @@ func parseTotalPages(doc *goquery.Selection) int {
 			}
 		}
 	}
-	
+
 	// Method 2: Look for highest page number in pagination links
 	var maxPage int
 	doc.Find(".pagination__nav-item").Each(func(i int, s *goquery.Selection) {
@@ -61,7 +61,7 @@ func parseTotalPages(doc *goquery.Selection) int {
 			}
 		}
 	})
-	
+
 	// Fallback: look for any pagination elements
 	if maxPage == 0 {
 		doc.Find(".pagination a").Each(func(i int, s *goquery.Selection) {
@@ -71,7 +71,7 @@ func parseTotalPages(doc *goquery.Selection) int {
 			}
 		})
 	}
-	
+
 	return maxPage
 }
 
@@ -82,7 +82,7 @@ func parseTotalItems(doc *goquery.Selection) int {
 	if countText == "" {
 		countText = doc.Find(".collection__mobile-active-filters-results").Text()
 	}
-	
+
 	if countText != "" {
 		// Extract number before "の結果" or "結果"
 		re := regexp.MustCompile(`(\d+).*結果`)
@@ -93,14 +93,14 @@ func parseTotalItems(doc *goquery.Selection) int {
 			}
 		}
 	}
-	
+
 	// Try alternative patterns
 	selectors := []string{
 		".collection-header__results",
 		".product-count",
 		".results-count",
 	}
-	
+
 	for _, selector := range selectors {
 		text := doc.Find(selector).Text()
 		if text != "" {
@@ -114,7 +114,7 @@ func parseTotalItems(doc *goquery.Selection) int {
 			}
 		}
 	}
-	
+
 	return 0
 }
 
@@ -130,10 +130,10 @@ func parseProductItem(s *goquery.Selection, baseURL string) *models.Card {
 			return nil
 		}
 	}
-	
+
 	// Make absolute URL
 	productURL = BuildProductURL(baseURL, productURL)
-	
+
 	// Extract card name using the specific selector
 	name := strings.TrimSpace(s.Find(".product-item__title").Text())
 	if name == "" {
@@ -143,26 +143,29 @@ func parseProductItem(s *goquery.Selection, baseURL string) *models.Card {
 			name = strings.TrimSpace(s.Find("h3").Text())
 		}
 	}
-	
+
 	if name == "" {
 		return nil // Skip if no name found
 	}
-	
+
 	// Extract price using the specific selector
 	priceText := s.Find(".price").Text()
 	price := parsePrice(priceText)
-	
+
 	// Extract stock info using the specific selector
 	stockText := s.Find(".product-item__inventory").Text()
 	stock := parseStockText(stockText)
-	
+
 	// Extract image URL using the specific selector
 	imgElement := s.Find(".product-item__primary-image")
 	imageURL := extractImageURL(imgElement)
-	
+
 	// Generate unique ID from URL
 	cardID := generateCardID(productURL)
-	
+
+	// Extract condition
+	condition := extractCondition(name)
+
 	return &models.Card{
 		ID:        cardID,
 		Name:      name,
@@ -171,6 +174,7 @@ func parseProductItem(s *goquery.Selection, baseURL string) *models.Card {
 		URL:       productURL,
 		ImageURL:  imageURL,
 		InStock:   stock > 0,
+		Condition: condition,
 		CreatedAt: time.Now(),
 		UpdatedAt: time.Now(),
 	}
@@ -181,14 +185,14 @@ func parsePrice(priceText string) float64 {
 	if priceText == "" {
 		return 0
 	}
-	
+
 	// Clean the price text
 	priceText = strings.ReplaceAll(priceText, "¥", "")
 	priceText = strings.ReplaceAll(priceText, ",", "")
 	priceText = strings.ReplaceAll(priceText, "販売価格", "")
 	priceText = strings.ReplaceAll(priceText, "円", "")
 	priceText = strings.TrimSpace(priceText)
-	
+
 	// Extract numeric value
 	re := regexp.MustCompile(`(\d+(?:\.\d+)?)`)
 	matches := re.FindStringSubmatch(priceText)
@@ -197,7 +201,7 @@ func parsePrice(priceText string) float64 {
 			return price
 		}
 	}
-	
+
 	return 0
 }
 
@@ -206,26 +210,26 @@ func parseStockText(stockText string) int {
 	if stockText == "" {
 		return 0
 	}
-	
+
 	stockText = strings.TrimSpace(stockText)
-	
+
 	// Pattern: "在庫 X個" or "残りX個のみ"
 	re := regexp.MustCompile(`(\d+)個`)
 	matches := re.FindStringSubmatch(stockText)
-	
+
 	if len(matches) > 1 {
 		if stock, err := strconv.Atoi(matches[1]); err == nil {
 			return stock
 		}
 	}
-	
+
 	// Check for common stock status indicators
 	lowerText := strings.ToLower(stockText)
 	if strings.Contains(lowerText, "在庫") || strings.Contains(lowerText, "available") {
 		// If it mentions stock but no number, assume 1
 		return 1
 	}
-	
+
 	// If no stock info found, assume out of stock
 	return 0
 }
@@ -243,7 +247,7 @@ func extractImageURL(imgElement *goquery.Selection) string {
 	if imageURL == "" {
 		imageURL, _ = imgElement.Attr("src")
 	}
-	
+
 	// Parse first image from srcset if present
 	if imageURL != "" && strings.Contains(imageURL, " ") {
 		parts := strings.Split(imageURL, " ")
@@ -251,14 +255,14 @@ func extractImageURL(imgElement *goquery.Selection) string {
 			imageURL = strings.TrimSpace(parts[0])
 		}
 	}
-	
+
 	// Make absolute URL if needed
 	if imageURL != "" && strings.HasPrefix(imageURL, "//") {
 		imageURL = "https:" + imageURL
 	} else if imageURL != "" && strings.HasPrefix(imageURL, "/") {
 		imageURL = "https://torecacamp-pokemon.com" + imageURL
 	}
-	
+
 	return imageURL
 }
 
@@ -267,7 +271,7 @@ func generateCardID(productURL string) string {
 	if productURL == "" {
 		return ""
 	}
-	
+
 	// Extract the last part of the URL path as ID
 	parts := strings.Split(productURL, "/")
 	for i := len(parts) - 1; i >= 0; i-- {
@@ -275,7 +279,31 @@ func generateCardID(productURL string) string {
 			return parts[i]
 		}
 	}
-	
+
 	// Fallback: use timestamp
 	return strconv.FormatInt(time.Now().UnixNano(), 36)
-} 
+}
+
+// extractCondition extracts the card condition from the name
+func extractCondition(name string) models.CardCondition {
+	// Check for condition indicators in the title
+	conditionPatterns := map[string]models.CardCondition{
+		"状態A+": models.ConditionAPlus,
+		"状態A-": models.ConditionAMinus,
+		"状態A":  models.ConditionA,
+		"状態B+": models.ConditionBPlus,
+		"状態B-": models.ConditionBMinus,
+		"状態B":  models.ConditionB,
+		"状態C":  models.ConditionC,
+		"状態D":  models.ConditionD,
+	}
+
+	for pattern, condition := range conditionPatterns {
+		if strings.Contains(name, pattern) {
+			return condition
+		}
+	}
+
+	// If no condition indicator found, it's perfect condition
+	return models.ConditionPerfect
+}

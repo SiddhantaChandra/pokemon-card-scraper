@@ -21,7 +21,7 @@ import (
 type Server struct {
 	router       *gin.Engine
 	storage      storage.Storage
-	scraper      *scraper.Scraper
+	scraper      scraper.ScraperInterface
 	searchEngine *search.SearchEngine
 	handlers     *Handlers
 	config       *ServerConfig
@@ -48,7 +48,7 @@ func DefaultServerConfig() *ServerConfig {
 }
 
 // NewServer creates a new API server instance
-func NewServer(storage storage.Storage, scraper *scraper.Scraper, config *ServerConfig) (*Server, error) {
+func NewServer(storage storage.Storage, scraperInstance scraper.ScraperInterface, config *ServerConfig) (*Server, error) {
 	if config == nil {
 		config = DefaultServerConfig()
 	}
@@ -70,13 +70,13 @@ func NewServer(storage storage.Storage, scraper *scraper.Scraper, config *Server
 	server := &Server{
 		router:       router,
 		storage:      storage,
-		scraper:      scraper,
+		scraper:      scraperInstance,
 		searchEngine: searchEngine,
 		config:       config,
 	}
 
 	// Initialize handlers
-	server.handlers = NewHandlers(storage, scraper, searchEngine)
+	server.handlers = NewHandlers(storage, scraperInstance, searchEngine)
 
 	// Setup middleware
 	server.setupMiddleware()

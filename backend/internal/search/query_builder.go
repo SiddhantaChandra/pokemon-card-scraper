@@ -107,6 +107,16 @@ func (qb *QueryBuilder) BuildSearchOptions(values url.Values) (SearchOptions, er
 	// Parse rarity filter
 	options.Rarity = strings.TrimSpace(values.Get("rarity"))
 
+	// Parse conditions filter
+	if conditionsStr := values.Get("conditions"); conditionsStr != "" {
+		conditions := strings.Split(conditionsStr, ",")
+		for _, c := range conditions {
+			if c != "" {
+				options.Conditions = append(options.Conditions, models.CardCondition(c))
+			}
+		}
+	}
+
 	// Parse sort option
 	sortBy := strings.TrimSpace(values.Get("sort"))
 	if qb.isValidSortOption(sortBy) {
@@ -176,6 +186,15 @@ func (qb *QueryBuilder) BuildQueryURL(baseURL string, options SearchOptions) str
 	// Add rarity filter
 	if options.Rarity != "" {
 		values.Set("rarity", options.Rarity)
+	}
+
+	// Add conditions filter
+	if len(options.Conditions) > 0 {
+		conditionStrs := make([]string, len(options.Conditions))
+		for i, condition := range options.Conditions {
+			conditionStrs[i] = string(condition)
+		}
+		values.Set("conditions", strings.Join(conditionStrs, ","))
 	}
 
 	// Add sort option

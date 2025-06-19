@@ -451,6 +451,12 @@ func (bs *BadgerStorage) updateIndexes(txn *badger.Txn, card models.Card) error 
 		}
 	}
 
+	// Condition index - Add this
+	conditionKey := bs.indexKey("condition", string(card.Condition))
+	if err := txn.Set(conditionKey, []byte(card.ID)); err != nil {
+		return err
+	}
+
 	return nil
 }
 
@@ -469,6 +475,10 @@ func (bs *BadgerStorage) removeFromIndexes(txn *badger.Txn, card models.Card) er
 		setKey := bs.indexKey("set", strings.ToLower(card.SetName))
 		txn.Delete(setKey)
 	}
+
+	// Remove condition index
+	conditionKey := bs.indexKey("condition", string(card.Condition))
+	txn.Delete(conditionKey)
 
 	return nil
 }
@@ -515,6 +525,20 @@ func (bs *BadgerStorage) matchesFilters(card models.Card, filters models.FilterO
 		found := false
 		for _, rarity := range filters.Rarities {
 			if strings.EqualFold(card.Rarity, rarity) {
+				found = true
+				break
+			}
+		}
+		if !found {
+			return false
+		}
+	}
+
+	// Condition filter - Add this new section
+	if len(filters.Conditions) > 0 {
+		found := false
+		for _, condition := range filters.Conditions {
+			if card.Condition == condition {
 				found = true
 				break
 			}
@@ -667,6 +691,10 @@ func (bs *BadgerStorage) applyFieldUpdates(card *models.Card, updates map[string
 		case "in_stock":
 			if inStock, ok := value.(bool); ok {
 				card.InStock = inStock
+			}
+		case "condition":
+			if condition, ok := value.(string); ok {
+				card.Condition = models.CardCondition(condition)
 			}
 		default:
 			// Ignore unknown fields

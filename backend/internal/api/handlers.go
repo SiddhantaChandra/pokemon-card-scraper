@@ -3,6 +3,7 @@ package api
 import (
 	"fmt"
 	"io"
+	"log"
 	"net/http"
 	"net/url"
 	"strconv"
@@ -17,16 +18,16 @@ import (
 // Handlers contains all HTTP handlers
 type Handlers struct {
 	storage      storage.Storage
-	scraper      *scraper.Scraper
+	scraper      scraper.ScraperInterface
 	searchEngine *search.SearchEngine
 	queryBuilder *search.QueryBuilder
 }
 
 // NewHandlers creates a new handlers instance
-func NewHandlers(storage storage.Storage, scraper *scraper.Scraper, searchEngine *search.SearchEngine) *Handlers {
+func NewHandlers(storage storage.Storage, scraperInstance scraper.ScraperInterface, searchEngine *search.SearchEngine) *Handlers {
 	return &Handlers{
 		storage:      storage,
-		scraper:      scraper,
+		scraper:      scraperInstance,
 		searchEngine: searchEngine,
 		queryBuilder: search.NewQueryBuilder(),
 	}
@@ -196,8 +197,21 @@ func (h *Handlers) StartScrape(c *gin.Context) {
 			MaxPages:    req.MaxPages,
 		}
 
-		// Always use ScrapeAllPages for proper status tracking
-		h.scraper.ScrapeAllPages(params, nil)
+		// Use parallel scraping if available
+		if ps, ok := h.scraper.(*scraper.ParallelScraper); ok {
+			log.Println("Starting parallel scraping with 10 workers...")
+			err := ps.ScrapeAllPagesParallel(params, func(progress scraper.ScrapeProgress) {
+				log.Printf("Progress: Page %d/%d, Items: %d",
+					progress.CurrentPage, progress.TotalPages, progress.ItemsProcessed)
+			})
+			if err != nil {
+				log.Printf("Parallel scraping error: %v", err)
+			}
+		} else {
+			// Fallback to regular scraping
+			log.Println("Using regular scraper (parallel scraper not available)")
+			h.scraper.ScrapeAllPages(params, nil)
+		}
 	}()
 
 	c.JSON(http.StatusAccepted, gin.H{

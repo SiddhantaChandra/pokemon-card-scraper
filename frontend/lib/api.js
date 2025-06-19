@@ -76,6 +76,9 @@ export const cardAPI = {
     if (filters.in_stock) params.append('in_stock', 'true');
     if (filters.set) params.append('set', filters.set);
     if (filters.rarity) params.append('rarity', filters.rarity);
+    if (filters.conditions && filters.conditions.length > 0) {
+      params.append('conditions', filters.conditions.join(','));
+    }
     if (filters.sort) params.append('sort', filters.sort);
     
     return api.get(`/cards/search?${params.toString()}`);

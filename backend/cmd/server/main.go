@@ -47,6 +47,7 @@ func main() {
 	// Initialize parallel scraper for enhanced performance
 	log.Println("Setting up parallel scraper...")
 	parallelConfig := scraper.DefaultParallelScraperConfig()
+	parallelConfig.PageWorkers = 10 // Scrape 10 pages concurrently
 	parallelScraper := scraper.NewParallelScraper(parallelConfig, batchProcessor)
 
 	// Set up parallel scraper callbacks to save cards to batch processor
@@ -84,7 +85,8 @@ func main() {
 		serverConfig.Debug = true
 	}
 
-	server, err := api.NewServer(cachedStorage, cardScraper, serverConfig)
+	// Create API server with parallel scraper as primary scraper
+	server, err := api.NewServer(cachedStorage, parallelScraper, serverConfig)
 	if err != nil {
 		log.Fatalf("Failed to create API server: %v", err)
 	}

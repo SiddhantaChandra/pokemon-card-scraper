@@ -34,6 +34,7 @@ type SearchOptions struct {
 	InStockOnly bool
 	SetName     string
 	Rarity      string
+	Conditions  []models.CardCondition
 	SortBy      string // price_asc, price_desc, name_asc, name_desc, date_asc, date_desc
 	Page        int
 	PageSize    int
@@ -127,6 +128,20 @@ func (se *SearchEngine) applyFilters(cards []models.Card, options SearchOptions)
 		// Rarity filter
 		if options.Rarity != "" && !strings.Contains(strings.ToLower(card.Rarity), strings.ToLower(options.Rarity)) {
 			continue
+		}
+
+		// Condition filter
+		if len(options.Conditions) > 0 {
+			found := false
+			for _, condition := range options.Conditions {
+				if card.Condition == condition {
+					found = true
+					break
+				}
+			}
+			if !found {
+				continue
+			}
 		}
 
 		filtered = append(filtered, card)
