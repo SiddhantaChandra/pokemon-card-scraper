@@ -322,28 +322,8 @@ export default function SearchBar({
               </div>
 
               {/* Set Name */}
-              <div className="space-y-3">
-                <label className="block text-sm font-medium text-gray-700 dark:text-gray-300">Set Name</label>
-                <input
-                  type="text"
-                  placeholder="e.g., Base Set, Jungle..."
-                  value={filters.set || ''}
-                  onChange={(e) => handleFilterChange('set', e.target.value)}
-                  className="w-full px-3 py-2 border border-gray-300 dark:border-gray-600 rounded-md text-sm bg-white dark:bg-gray-700 text-gray-900 dark:text-white placeholder-gray-500 dark:placeholder-gray-400 focus:outline-none focus:ring-1 focus:ring-blue-500 dark:focus:ring-blue-400 focus:border-blue-500 dark:focus:border-blue-400"
-                />
-              </div>
-
-              {/* Rarity */}
-              <div className="space-y-3">
-                <label className="block text-sm font-medium text-gray-700 dark:text-gray-300">Rarity</label>
-                <input
-                  type="text"
-                  placeholder="e.g., Rare, Common, Uncommon..."
-                  value={filters.rarity || ''}
-                  onChange={(e) => handleFilterChange('rarity', e.target.value)}
-                  className="w-full px-3 py-2 border border-gray-300 dark:border-gray-600 rounded-md text-sm bg-white dark:bg-gray-700 text-gray-900 dark:text-white placeholder-gray-500 dark:placeholder-gray-400 focus:outline-none focus:ring-1 focus:ring-blue-500 dark:focus:ring-blue-400 focus:border-blue-500 dark:focus:border-blue-400"
-                />
-              </div>
+             
+              
 
               {/* Stock Filter */}
               <div className="space-y-3">
