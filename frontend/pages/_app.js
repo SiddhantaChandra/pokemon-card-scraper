@@ -1,4 +1,5 @@
 import { SWRConfig } from 'swr';
+import { DarkModeProvider } from '../lib/darkModeContext';
 import "@/styles/globals.css";
 
 // SWR configuration
@@ -27,8 +28,10 @@ const swrConfig = {
 
 export default function App({ Component, pageProps }) {
   return (
-    <SWRConfig value={swrConfig}>
-      <Component {...pageProps} />
-    </SWRConfig>
+    <DarkModeProvider>
+      <SWRConfig value={swrConfig}>
+        <Component {...pageProps} />
+      </SWRConfig>
+    </DarkModeProvider>
   );
 }

@@ -25,13 +25,34 @@ export default function CardItem({ card }) {
     }
   };
 
+  // Get condition badge colors with better contrast
+  const getConditionBadgeColors = (condition) => {
+    switch (condition) {
+      case 'Perfect':
+        return 'bg-green-600 text-white font-bold dark:bg-green-500';
+      case 'A+':
+      case 'A':
+      case 'A-':
+        return 'bg-blue-600 text-white font-bold dark:bg-blue-500';
+      case 'B+':
+      case 'B':
+      case 'B-':
+        return 'bg-orange-500 text-white font-bold dark:bg-orange-400';
+      case 'C':
+      case 'D':
+        return 'bg-red-600 text-white font-bold dark:bg-red-500';
+      default:
+        return 'bg-gray-600 text-white font-bold dark:bg-gray-500';
+    }
+  };
+
   return (
-    <div className="group bg-white rounded-lg shadow-md hover:shadow-lg transition-all duration-200 overflow-hidden border border-gray-200 hover:border-gray-300">
+    <div className="group bg-white dark:bg-gray-800 rounded-lg shadow-md hover:shadow-lg transition-all duration-200 overflow-hidden border border-gray-200 dark:border-gray-700 hover:border-gray-300 dark:hover:border-gray-600">
       {/* Image Container */}
-      <div className="relative aspect-[3/4] bg-gray-100 overflow-hidden">
+      <div className="relative aspect-[3/4] bg-gray-100 dark:bg-gray-700 overflow-hidden">
         {imageLoading && (
           <div className="absolute inset-0 flex items-center justify-center z-10">
-            <div className="animate-spin rounded-full h-8 w-8 border-b-2 border-blue-600"></div>
+            <div className="animate-spin rounded-full h-8 w-8 border-b-2 border-blue-600 dark:border-blue-400"></div>
           </div>
         )}
         
@@ -50,8 +71,8 @@ export default function CardItem({ card }) {
             crossOrigin="anonymous"
           />
         ) : (
-          <div className="w-full h-full flex items-center justify-center bg-gray-200">
-            <div className="text-center text-gray-500">
+          <div className="w-full h-full flex items-center justify-center bg-gray-200 dark:bg-gray-600">
+            <div className="text-center text-gray-500 dark:text-gray-400">
               <svg className="mx-auto h-12 w-12 mb-2" fill="none" viewBox="0 0 24 24" stroke="currentColor">
                 <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M4 16l4.586-4.586a2 2 0 012.828 0L16 16m-2-2l1.586-1.586a2 2 0 012.828 0L20 14m-6-6h.01M6 20h12a2 2 0 002-2V6a2 2 0 00-2-2H6a2 2 0 00-2 2v12a2 2 0 002 2z" />
               </svg>
@@ -62,7 +83,7 @@ export default function CardItem({ card }) {
 
         {/* Stock Status Badge */}
         <div className="absolute top-2 right-2 z-20">
-          <span className={`inline-flex items-center px-2 py-1 rounded-full text-xs font-medium ${stockStatus.color} ${stockStatus.bgColor}`}>
+          <span className={`inline-flex items-center px-3 py-1 rounded-full text-xs shadow-lg ${stockStatus.color} ${stockStatus.bgColor}`}>
             {stockStatus.text}
           </span>
         </div>
@@ -70,12 +91,7 @@ export default function CardItem({ card }) {
         {/* Condition Badge */}
         {card.condition && (
           <div className="absolute bottom-2 right-2 z-20">
-            <span className={`inline-flex items-center px-2 py-1 rounded-full text-xs font-medium ${
-              card.condition === 'Perfect' ? 'bg-green-100 text-green-800' :
-              card.condition.startsWith('A') ? 'bg-blue-100 text-blue-800' :
-              card.condition.startsWith('B') ? 'bg-yellow-100 text-yellow-800' :
-              'bg-red-100 text-red-800'
-            }`}>
+            <span className={`inline-flex items-center px-3 py-1 rounded-full text-xs shadow-lg ${getConditionBadgeColors(card.condition)}`}>
               {card.condition}
             </span>
           </div>
@@ -96,26 +112,26 @@ export default function CardItem({ card }) {
       {/* Card Content */}
       <div className="p-4">
         {/* Card Name */}
-        <h3 className="font-semibold text-gray-900 text-sm mb-2 line-clamp-2 min-h-[2.5rem]">
+        <h3 className="font-semibold text-gray-900 dark:text-white text-sm mb-2 line-clamp-2 min-h-[2.5rem]">
           {card.name}
         </h3>
 
         {/* Japanese Name */}
         {card.name_jp && card.name_jp !== card.name && (
-          <p className="text-xs text-gray-500 mb-2 line-clamp-1">
+          <p className="text-xs text-gray-500 dark:text-gray-400 mb-2 line-clamp-1">
             {card.name_jp}
           </p>
         )}
 
         {/* Set and Rarity */}
-        <div className="flex items-center justify-between mb-3 text-xs text-gray-600">
+        <div className="flex items-center justify-between mb-3 text-xs">
           {card.set_name && (
-            <span className="bg-gray-100 px-2 py-1 rounded truncate max-w-[60%]">
+            <span className="bg-gray-100 dark:bg-gray-700 text-gray-800 dark:text-gray-200 px-2 py-1 rounded truncate max-w-[60%] font-medium">
               {card.set_name}
             </span>
           )}
           {card.rarity && (
-            <span className="bg-yellow-100 text-yellow-800 px-2 py-1 rounded">
+            <span className="bg-yellow-500 text-white px-2 py-1 rounded font-bold">
               {card.rarity}
             </span>
           )}
@@ -123,7 +139,7 @@ export default function CardItem({ card }) {
 
         {/* Price */}
         <div className="flex items-center justify-between">
-          <div className="text-lg font-bold text-gray-900">
+          <div className="text-lg font-bold text-gray-900 dark:text-white">
             {apiHelpers.formatPrice(card.price)}
           </div>
           
@@ -131,7 +147,7 @@ export default function CardItem({ card }) {
           {externalUrl && (
             <button
               onClick={handleCardClick}
-              className="bg-blue-600 hover:bg-blue-700 text-white px-3 py-1 rounded text-xs font-medium transition-colors duration-200 flex items-center space-x-1"
+              className="bg-blue-600 hover:bg-blue-700 dark:bg-blue-500 dark:hover:bg-blue-600 text-white px-3 py-1 rounded text-xs font-medium transition-colors duration-200 flex items-center space-x-1"
             >
               <span>View</span>
               <svg className="h-3 w-3" fill="none" viewBox="0 0 24 24" stroke="currentColor">
@@ -143,7 +159,7 @@ export default function CardItem({ card }) {
 
         {/* Last Updated */}
         {card.updated_at && (
-          <div className="mt-2 text-xs text-gray-400">
+          <div className="mt-2 text-xs text-gray-400 dark:text-gray-500">
             Updated {apiHelpers.formatDate(card.updated_at)}
           </div>
         )}

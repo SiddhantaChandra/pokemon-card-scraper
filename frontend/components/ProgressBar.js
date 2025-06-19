@@ -38,16 +38,16 @@ const ProgressBar = ({
   };
 
   return (
-    <div className="w-full max-w-6xl mx-auto space-y-6">
+    <div className="w-full max-w-6xl mx-auto space-y-4">
       {/* Main Progress Bar */}
-      <div className="bg-white rounded-2xl shadow-lg border border-gray-100 overflow-hidden">
-        <div className="p-6">
-          <div className="flex justify-between items-center mb-4">
-            <h3 className="text-xl font-bold text-gray-800 flex items-center gap-2">
+      <div className="bg-white dark:bg-gray-800 rounded-xl shadow-lg border border-gray-100 dark:border-gray-700 overflow-hidden">
+        <div className="p-4">
+          <div className="flex justify-between items-center mb-3">
+            <h3 className="text-lg font-bold text-gray-800 dark:text-white flex items-center gap-2">
               <div className={`w-3 h-3 rounded-full ${isPaused ? 'bg-yellow-400' : 'bg-green-400'} animate-pulse`}></div>
               {isPaused ? 'Scraping Paused' : 'Scraping in Progress'}
             </h3>
-            <div className="text-sm text-gray-500">
+            <div className="text-sm text-gray-500 dark:text-gray-400">
               {currentPage ? `Page ${formatNumber(currentPage)}` : ''} 
               {totalPages ? ` of ${formatNumber(totalPages)}` : ''}
             </div>
@@ -55,7 +55,7 @@ const ProgressBar = ({
 
           {/* Progress Bar */}
           <div className="relative">
-            <div className="w-full bg-gray-200 rounded-full h-4 mb-4 overflow-hidden">
+            <div className="w-full bg-gray-200 dark:bg-gray-700 rounded-full h-3 mb-3 overflow-hidden">
               <div 
                 className={`h-full rounded-full transition-all duration-1000 ease-out ${
                   isPaused 
@@ -69,7 +69,7 @@ const ProgressBar = ({
             </div>
             
             {/* Progress Percentage Overlay */}
-            <div className="absolute top-0 left-0 w-full h-4 flex items-center justify-center">
+            <div className="absolute top-0 left-0 w-full h-3 flex items-center justify-center">
               <span className="text-xs font-semibold text-white drop-shadow-lg">
                 {progress ? `${progress.toFixed(1)}%` : '0%'}
               </span>
@@ -79,16 +79,16 @@ const ProgressBar = ({
       </div>
 
       {/* Statistics Cards Grid */}
-      <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-6">
+      <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-3">
         {/* Cards Scraped */}
-        <div className="bg-gradient-to-br from-blue-50 to-blue-100 rounded-xl p-6 border border-blue-200 shadow-sm">
+        <div className="bg-gradient-to-br from-blue-50 to-blue-100 dark:from-blue-900/30 dark:to-blue-800/30 rounded-lg p-4 border border-blue-200 dark:border-blue-800 shadow-sm">
           <div className="flex items-center justify-between">
             <div>
-              <p className="text-sm font-medium text-blue-600 mb-1">Cards Scraped</p>
-              <p className="text-3xl font-bold text-blue-800">{formatNumber(cardsScraped)}</p>
+              <p className="text-sm font-medium text-blue-600 dark:text-blue-400 mb-1">Cards Scraped</p>
+              <p className="text-2xl font-bold text-blue-800 dark:text-blue-300">{formatNumber(cardsScraped)}</p>
             </div>
-            <div className="w-12 h-12 bg-blue-500 rounded-lg flex items-center justify-center">
-              <svg className="w-6 h-6 text-white" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+            <div className="w-10 h-10 bg-blue-500 rounded-lg flex items-center justify-center">
+              <svg className="w-5 h-5 text-white" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                 <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M7 21a4 4 0 01-4-4V5a2 2 0 012-2h4a2 2 0 012 2v12a4 4 0 01-4 4zM21 5a2 2 0 00-2-2h-4a2 2 0 00-2 2v12a4 4 0 004 4h4a4 4 0 004-4V5z" />
               </svg>
             </div>
@@ -96,15 +96,15 @@ const ProgressBar = ({
         </div>
 
         {/* Scraping Speed */}
-        <div className="bg-gradient-to-br from-green-50 to-green-100 rounded-xl p-6 border border-green-200 shadow-sm">
+        <div className="bg-gradient-to-br from-green-50 to-green-100 dark:from-green-900/30 dark:to-green-800/30 rounded-lg p-4 border border-green-200 dark:border-green-800 shadow-sm">
           <div className="flex items-center justify-between">
             <div>
-              <p className="text-sm font-medium text-green-600 mb-1">Speed</p>
-              <p className="text-3xl font-bold text-green-800">{Math.round(cardsPerMinute || 0)}</p>
-              <p className="text-xs text-green-600">cards/min</p>
+              <p className="text-sm font-medium text-green-600 dark:text-green-400 mb-1">Speed</p>
+              <p className="text-2xl font-bold text-green-800 dark:text-green-300">{Math.round(cardsPerMinute || 0)}</p>
+              <p className="text-xs text-green-600 dark:text-green-400">cards/min</p>
             </div>
-            <div className="w-12 h-12 bg-green-500 rounded-lg flex items-center justify-center">
-              <svg className="w-6 h-6 text-white" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+            <div className="w-10 h-10 bg-green-500 rounded-lg flex items-center justify-center">
+              <svg className="w-5 h-5 text-white" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                 <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M13 10V3L4 14h7v7l9-11h-7z" />
               </svg>
             </div>
@@ -112,14 +112,14 @@ const ProgressBar = ({
         </div>
 
         {/* Time Remaining */}
-        <div className="bg-gradient-to-br from-purple-50 to-purple-100 rounded-xl p-6 border border-purple-200 shadow-sm">
+        <div className="bg-gradient-to-br from-purple-50 to-purple-100 dark:from-purple-900/30 dark:to-purple-800/30 rounded-lg p-4 border border-purple-200 dark:border-purple-800 shadow-sm">
           <div className="flex items-center justify-between">
             <div>
-              <p className="text-sm font-medium text-purple-600 mb-1">Time Remaining</p>
-              <p className="text-2xl font-bold text-purple-800">{formatDuration(estimatedTimeRemaining)}</p>
+              <p className="text-sm font-medium text-purple-600 dark:text-purple-400 mb-1">Time Remaining</p>
+              <p className="text-xl font-bold text-purple-800 dark:text-purple-300">{formatDuration(estimatedTimeRemaining)}</p>
             </div>
-            <div className="w-12 h-12 bg-purple-500 rounded-lg flex items-center justify-center">
-              <svg className="w-6 h-6 text-white" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+            <div className="w-10 h-10 bg-purple-500 rounded-lg flex items-center justify-center">
+              <svg className="w-5 h-5 text-white" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                 <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 8v4l3 3m6-3a9 9 0 11-18 0 9 9 0 0118 0z" />
               </svg>
             </div>
@@ -127,14 +127,14 @@ const ProgressBar = ({
         </div>
 
         {/* Elapsed Time */}
-        <div className="bg-gradient-to-br from-gray-50 to-gray-100 rounded-xl p-6 border border-gray-200 shadow-sm">
+        <div className="bg-gradient-to-br from-gray-50 to-gray-100 dark:from-gray-800/30 dark:to-gray-700/30 rounded-lg p-4 border border-gray-200 dark:border-gray-700 shadow-sm">
           <div className="flex items-center justify-between">
             <div>
-              <p className="text-sm font-medium text-gray-600 mb-1">Elapsed Time</p>
-              <p className="text-2xl font-bold text-gray-800">{formatElapsedTime(startTime)}</p>
+              <p className="text-sm font-medium text-gray-600 dark:text-gray-400 mb-1">Elapsed Time</p>
+              <p className="text-xl font-bold text-gray-800 dark:text-gray-300">{formatElapsedTime(startTime)}</p>
             </div>
-            <div className="w-12 h-12 bg-gray-500 rounded-lg flex items-center justify-center">
-              <svg className="w-6 h-6 text-white" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+            <div className="w-10 h-10 bg-gray-500 rounded-lg flex items-center justify-center">
+              <svg className="w-5 h-5 text-white" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                 <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 8v4l3 3m6-3a9 9 0 11-18 0 9 9 0 0118 0z" />
               </svg>
             </div>
@@ -143,20 +143,20 @@ const ProgressBar = ({
       </div>
 
       {/* Additional Info Panel */}
-      <div className="bg-white rounded-xl shadow-sm border border-gray-100 p-6">
-        <h4 className="text-lg font-semibold text-gray-800 mb-4">Scraping Details</h4>
-        <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
+      <div className="bg-white dark:bg-gray-800 rounded-xl shadow-sm border border-gray-100 dark:border-gray-700 p-4">
+        <h4 className="text-lg font-semibold text-gray-800 dark:text-white mb-3">Scraping Details</h4>
+        <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
           <div className="text-center">
-            <p className="text-sm text-gray-500 mb-1">Current Page</p>
-            <p className="text-2xl font-bold text-gray-800">{formatNumber(currentPage || 0)}</p>
+            <p className="text-sm text-gray-500 dark:text-gray-400 mb-1">Current Page</p>
+            <p className="text-xl font-bold text-gray-800 dark:text-white">{formatNumber(currentPage || 0)}</p>
           </div>
           <div className="text-center">
-            <p className="text-sm text-gray-500 mb-1">Total Pages</p>
-            <p className="text-2xl font-bold text-gray-800">{formatNumber(totalPages || 0)}</p>
+            <p className="text-sm text-gray-500 dark:text-gray-400 mb-1">Total Pages</p>
+            <p className="text-xl font-bold text-gray-800 dark:text-white">{formatNumber(totalPages || 0)}</p>
           </div>
           <div className="text-center">
-            <p className="text-sm text-gray-500 mb-1">Progress</p>
-            <p className="text-2xl font-bold text-gray-800">{progress ? `${progress.toFixed(1)}%` : '0%'}</p>
+            <p className="text-sm text-gray-500 dark:text-gray-400 mb-1">Progress</p>
+            <p className="text-xl font-bold text-gray-800 dark:text-white">{progress ? `${progress.toFixed(1)}%` : '0%'}</p>
           </div>
         </div>
       </div>

@@ -544,6 +544,8 @@ func (bs *BadgerStorage) matchesFilters(card models.Card, filters models.FilterO
 			}
 		}
 		if !found {
+			// Add debug logging for condition filtering
+			log.Printf("DEBUG: Card '%s' condition '%s' not in filter %v", card.Name, card.Condition, filters.Conditions)
 			return false
 		}
 	}

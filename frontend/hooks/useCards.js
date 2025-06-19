@@ -3,10 +3,23 @@ import { cardAPI } from '../lib/api';
 
 // Fetcher function for SWR
 const fetcher = async ([endpoint, query, filters]) => {
-  if (query) {
-    const response = await cardAPI.searchCards(query, filters);
+  // Check if we have any active filters
+  const hasActiveFilters = query || 
+    filters.min_price || 
+    filters.max_price || 
+    filters.in_stock || 
+    filters.set || 
+    filters.rarity || 
+    (filters.conditions && filters.conditions.length > 0) ||
+    (filters.page && filters.page > 1) ||
+    (filters.sort && filters.sort !== 'date_desc');
+
+  if (hasActiveFilters) {
+    // Use search endpoint when any filters or query are active
+    const response = await cardAPI.searchCards(query || '', filters);
     return response.data;
   } else {
+    // Use getAllCards only when no filters are active
     const response = await cardAPI.getAllCards(filters);
     return response.data;
   }
@@ -42,7 +55,7 @@ export function useCards(searchQuery = '', filters = {}) {
     // Data
     cards: data?.cards || [],
     totalPages: data?.total_pages || 0,
-    totalItems: data?.total_items || 0,
+    totalItems: data?.total || 0,
     currentPage: data?.page || 1,
     pageSize: data?.page_size || 20,
     

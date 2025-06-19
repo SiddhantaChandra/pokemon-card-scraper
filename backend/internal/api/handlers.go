@@ -54,6 +54,10 @@ func (h *Handlers) GetAllCards(c *gin.Context) {
 		return
 	}
 
+	// Add debug logging for filter options
+	log.Printf("DEBUG: GetAllCards called with options: Query='%s', Conditions=%v, Page=%d, InStock=%v",
+		filterOpts.Query, filterOpts.Conditions, filterOpts.Page, filterOpts.InStockOnly)
+
 	// Get cards from storage
 	result, err := h.storage.SearchCards(filterOpts)
 	if err != nil {
@@ -78,6 +82,10 @@ func (h *Handlers) SearchCards(c *gin.Context) {
 		})
 		return
 	}
+
+	// Add debug logging for search options
+	log.Printf("DEBUG: SearchCards called with options: Query='%s', Conditions=%v, Page=%d, InStock=%v",
+		searchOpts.Query, searchOpts.Conditions, searchOpts.Page, searchOpts.InStockOnly)
 
 	// Validate search options
 	if err := h.queryBuilder.ValidateSearchOptions(searchOpts); err != nil {

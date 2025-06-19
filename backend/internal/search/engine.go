@@ -95,10 +95,33 @@ func (se *SearchEngine) SearchCards(options SearchOptions) (*models.SearchResult
 		paginatedCards = filteredCards[startIdx:endIdx]
 	}
 
+	// Convert SearchOptions to FilterOptions for the result
+	resultFilters := models.FilterOptions{
+		Query:       options.Query,
+		MinPrice:    options.MinPrice,
+		MaxPrice:    options.MaxPrice,
+		InStockOnly: options.InStockOnly,
+		Conditions:  options.Conditions,
+		SortBy:      options.SortBy,
+		Page:        options.Page,
+		PageSize:    options.PageSize,
+	}
+
+	if options.SetName != "" {
+		resultFilters.SetNames = []string{options.SetName}
+	}
+	if options.Rarity != "" {
+		resultFilters.Rarities = []string{options.Rarity}
+	}
+
 	return &models.SearchResult{
-		Cards:    paginatedCards,
-		Page:     options.Page,
-		PageSize: options.PageSize,
+		Cards:      paginatedCards,
+		Total:      totalItems,
+		Page:       options.Page,
+		PageSize:   options.PageSize,
+		TotalPages: totalPages,
+		Query:      options.Query,
+		Filters:    resultFilters,
 	}, nil
 }
 

@@ -38,6 +38,9 @@ func (qb *QueryBuilder) BuildFilterOptions(values url.Values) (models.FilterOpti
 		}
 	}
 
+	// Parse query string
+	filterOpts.Query = strings.TrimSpace(values.Get("q"))
+
 	// Parse price range
 	if minPriceStr := values.Get("min_price"); minPriceStr != "" {
 		if minPrice, err := strconv.ParseFloat(minPriceStr, 64); err == nil && minPrice >= 0 {
@@ -54,6 +57,42 @@ func (qb *QueryBuilder) BuildFilterOptions(values url.Values) (models.FilterOpti
 	// Parse in stock filter
 	if values.Get("in_stock") == "true" || values.Get("in_stock_only") == "true" {
 		filterOpts.InStockOnly = true
+	}
+
+	// Parse set names filter
+	if setStr := values.Get("set"); setStr != "" {
+		sets := strings.Split(setStr, ",")
+		for _, s := range sets {
+			if s := strings.TrimSpace(s); s != "" {
+				filterOpts.SetNames = append(filterOpts.SetNames, s)
+			}
+		}
+	}
+
+	// Parse rarities filter
+	if rarityStr := values.Get("rarity"); rarityStr != "" {
+		rarities := strings.Split(rarityStr, ",")
+		for _, r := range rarities {
+			if r := strings.TrimSpace(r); r != "" {
+				filterOpts.Rarities = append(filterOpts.Rarities, r)
+			}
+		}
+	}
+
+	// Parse conditions filter
+	if conditionsStr := values.Get("conditions"); conditionsStr != "" {
+		conditions := strings.Split(conditionsStr, ",")
+		for _, c := range conditions {
+			if c := strings.TrimSpace(c); c != "" {
+				filterOpts.Conditions = append(filterOpts.Conditions, models.CardCondition(c))
+			}
+		}
+	}
+
+	// Parse sort option
+	sortBy := strings.TrimSpace(values.Get("sort"))
+	if qb.isValidSortOption(sortBy) {
+		filterOpts.SortBy = sortBy
 	}
 
 	return filterOpts, nil

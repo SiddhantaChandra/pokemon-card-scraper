@@ -51,7 +51,7 @@ export default function Pagination({
   return (
     <div className={`flex items-center justify-between ${className}`}>
       {/* Results Info */}
-      <div className="text-sm text-gray-700">
+      <div className="text-sm text-gray-700 dark:text-gray-300">
         Showing <span className="font-medium">{startItem}</span> to{' '}
         <span className="font-medium">{endItem}</span> of{' '}
         <span className="font-medium">{totalItems}</span> results
@@ -63,7 +63,7 @@ export default function Pagination({
         <button
           onClick={() => onPageChange(currentPage - 1)}
           disabled={currentPage <= 1}
-          className="relative inline-flex items-center px-3 py-2 text-sm font-medium text-gray-500 bg-white border border-gray-300 rounded-l-md hover:bg-gray-50 disabled:opacity-50 disabled:cursor-not-allowed"
+          className="relative inline-flex items-center px-3 py-2 text-sm font-medium text-gray-500 dark:text-gray-400 bg-white dark:bg-gray-800 border border-gray-300 dark:border-gray-600 rounded-l-md hover:bg-gray-50 dark:hover:bg-gray-700 disabled:opacity-50 disabled:cursor-not-allowed"
         >
           <svg className="h-4 w-4" fill="none" viewBox="0 0 24 24" stroke="currentColor">
             <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M15 19l-7-7 7-7" />
@@ -78,7 +78,7 @@ export default function Pagination({
               return (
                 <span
                   key={`ellipsis-${index}`}
-                  className="relative inline-flex items-center px-4 py-2 text-sm font-medium text-gray-700 bg-white border border-gray-300"
+                  className="relative inline-flex items-center px-4 py-2 text-sm font-medium text-gray-700 dark:text-gray-300 bg-white dark:bg-gray-800 border border-gray-300 dark:border-gray-600"
                 >
                   ...
                 </span>
@@ -91,8 +91,8 @@ export default function Pagination({
                 onClick={() => onPageChange(page)}
                 className={`relative inline-flex items-center px-4 py-2 text-sm font-medium border ${
                   page === currentPage
-                    ? 'z-10 bg-blue-50 border-blue-500 text-blue-600'
-                    : 'bg-white border-gray-300 text-gray-500 hover:bg-gray-50'
+                    ? 'z-10 bg-blue-50 dark:bg-blue-900/50 border-blue-500 dark:border-blue-400 text-blue-600 dark:text-blue-400'
+                    : 'bg-white dark:bg-gray-800 border-gray-300 dark:border-gray-600 text-gray-500 dark:text-gray-400 hover:bg-gray-50 dark:hover:bg-gray-700'
                 }`}
               >
                 {page}
@@ -103,7 +103,7 @@ export default function Pagination({
 
         {/* Mobile Page Info */}
         <div className="sm:hidden">
-          <span className="relative inline-flex items-center px-4 py-2 text-sm font-medium text-gray-700 bg-white border border-gray-300">
+          <span className="relative inline-flex items-center px-4 py-2 text-sm font-medium text-gray-700 dark:text-gray-300 bg-white dark:bg-gray-800 border border-gray-300 dark:border-gray-600">
             {currentPage} of {totalPages}
           </span>
         </div>
@@ -112,7 +112,7 @@ export default function Pagination({
         <button
           onClick={() => onPageChange(currentPage + 1)}
           disabled={currentPage >= totalPages}
-          className="relative inline-flex items-center px-3 py-2 text-sm font-medium text-gray-500 bg-white border border-gray-300 rounded-r-md hover:bg-gray-50 disabled:opacity-50 disabled:cursor-not-allowed"
+          className="relative inline-flex items-center px-3 py-2 text-sm font-medium text-gray-500 dark:text-gray-400 bg-white dark:bg-gray-800 border border-gray-300 dark:border-gray-600 rounded-r-md hover:bg-gray-50 dark:hover:bg-gray-700 disabled:opacity-50 disabled:cursor-not-allowed"
         >
           <span className="mr-1 hidden sm:inline">Next</span>
           <svg className="h-4 w-4" fill="none" viewBox="0 0 24 24" stroke="currentColor">

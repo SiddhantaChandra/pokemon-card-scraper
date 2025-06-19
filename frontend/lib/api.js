@@ -211,11 +211,23 @@ export const apiHelpers = {
   // Get stock status text and color
   getStockStatus: (stock) => {
     if (stock > 10) {
-      return { text: 'In Stock', color: 'text-green-600', bgColor: 'bg-green-100' };
+      return { 
+        text: 'In Stock', 
+        color: 'text-white font-bold', 
+        bgColor: 'bg-green-600 dark:bg-green-500' 
+      };
     } else if (stock > 0) {
-      return { text: `${stock} left`, color: 'text-yellow-600', bgColor: 'bg-yellow-100' };
+      return { 
+        text: `${stock} left`, 
+        color: 'text-white font-bold', 
+        bgColor: 'bg-orange-500 dark:bg-orange-400' 
+      };
     } else {
-      return { text: 'Out of Stock', color: 'text-red-600', bgColor: 'bg-red-100' };
+      return { 
+        text: 'Out of Stock', 
+        color: 'text-white font-bold', 
+        bgColor: 'bg-red-600 dark:bg-red-500' 
+      };
     }
   },
 
