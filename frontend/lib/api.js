@@ -116,6 +116,16 @@ export const scrapeAPI = {
     return api.post('/scrape/stop');
   },
 
+  // Pause scraping
+  pause: () => {
+    return api.post('/scrape/pause');
+  },
+
+  // Resume scraping
+  resume: () => {
+    return api.post('/scrape/resume');
+  },
+
   // Restart scraping (stop current job if running, then start new one)
   restart: (options = {}) => {
     return api.post('/scrape/restart', {

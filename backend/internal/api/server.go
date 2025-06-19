@@ -156,6 +156,8 @@ func (s *Server) setupRoutes() {
 			scrape.POST("/start", s.handlers.StartScrape)     // POST /api/scrape/start
 			scrape.GET("/status", s.handlers.GetScrapeStatus) // GET /api/scrape/status
 			scrape.POST("/stop", s.handlers.StopScrape)       // POST /api/scrape/stop
+			scrape.POST("/pause", s.handlers.PauseScrape)     // POST /api/scrape/pause
+			scrape.POST("/resume", s.handlers.ResumeScrape)   // POST /api/scrape/resume
 			scrape.POST("/restart", s.handlers.RestartScrape) // POST /api/scrape/restart
 		}
 

@@ -193,22 +193,11 @@ func (h *Handlers) StartScrape(c *gin.Context) {
 	go func() {
 		params := scraper.SearchParams{
 			InStockOnly: req.InStockOnly,
+			MaxPages:    req.MaxPages,
 		}
 
-		if req.MaxPages > 0 {
-			// Scrape limited pages
-			for page := 1; page <= req.MaxPages; page++ {
-				params.Page = page
-				url := scraper.BuildSearchURL(params)
-				_, err := h.scraper.ScrapePage(url)
-				if err != nil {
-					break
-				}
-			}
-		} else {
-			// Scrape all pages
-			h.scraper.ScrapeAllPages(params, nil)
-		}
+		// Always use ScrapeAllPages for proper status tracking
+		h.scraper.ScrapeAllPages(params, nil)
 	}()
 
 	c.JSON(http.StatusAccepted, gin.H{
@@ -223,19 +212,23 @@ func (h *Handlers) StartScrape(c *gin.Context) {
 func (h *Handlers) GetScrapeStatus(c *gin.Context) {
 	status := h.scraper.GetStatus()
 
+	progressPercent := 0.0
+	if status.TotalPages > 0 {
+		progressPercent = float64(status.CurrentPage) / float64(status.TotalPages) * 100
+	}
+
 	c.JSON(http.StatusOK, gin.H{
-		"running":       h.scraper.IsRunning(),
-		"current_page":  status.CurrentPage,
-		"total_pages":   status.TotalPages,
-		"items_scraped": status.ItemsScraped,
-		"last_updated":  status.LastUpdated,
-		"start_time":    status.StartTime,
-		"progress_percent": func() float64 {
-			if status.TotalPages > 0 {
-				return float64(status.CurrentPage) / float64(status.TotalPages) * 100
-			}
-			return 0.0
-		}(),
+		"running":                  h.scraper.IsRunning(),
+		"paused":                   h.scraper.IsPaused(),
+		"current_page":             status.CurrentPage,
+		"total_pages":              status.TotalPages,
+		"items_scraped":            status.ItemsScraped,
+		"cards_per_minute":         status.CardsPerMinute,
+		"estimated_time_remaining": status.EstimatedTimeRemaining,
+		"last_updated":             status.LastUpdated,
+		"start_time":               status.StartTime,
+		"paused_at":                status.PausedAt,
+		"progress_percent":         progressPercent,
 	})
 }
 
@@ -255,6 +248,68 @@ func (h *Handlers) StopScrape(c *gin.Context) {
 		"message":    "Scrape job stopped",
 		"stopped_at": time.Now().UTC(),
 	})
+}
+
+// PauseScrape handles POST /api/scrape/pause
+func (h *Handlers) PauseScrape(c *gin.Context) {
+	if !h.scraper.IsRunning() {
+		c.JSON(http.StatusBadRequest, gin.H{
+			"error":   "No scrape job running",
+			"message": "There is no active scrape job to pause",
+		})
+		return
+	}
+
+	if h.scraper.IsPaused() {
+		c.JSON(http.StatusBadRequest, gin.H{
+			"error":   "Scrape job already paused",
+			"message": "The scrape job is already paused",
+		})
+		return
+	}
+
+	if h.scraper.Pause() {
+		c.JSON(http.StatusOK, gin.H{
+			"message":   "Scrape job paused",
+			"paused_at": time.Now().UTC(),
+		})
+	} else {
+		c.JSON(http.StatusInternalServerError, gin.H{
+			"error":   "Failed to pause scrape job",
+			"message": "Could not pause the scrape job",
+		})
+	}
+}
+
+// ResumeScrape handles POST /api/scrape/resume
+func (h *Handlers) ResumeScrape(c *gin.Context) {
+	if !h.scraper.IsRunning() {
+		c.JSON(http.StatusBadRequest, gin.H{
+			"error":   "No scrape job running",
+			"message": "There is no scrape job to resume",
+		})
+		return
+	}
+
+	if !h.scraper.IsPaused() {
+		c.JSON(http.StatusBadRequest, gin.H{
+			"error":   "Scrape job not paused",
+			"message": "The scrape job is not currently paused",
+		})
+		return
+	}
+
+	if h.scraper.Resume() {
+		c.JSON(http.StatusOK, gin.H{
+			"message":    "Scrape job resumed",
+			"resumed_at": time.Now().UTC(),
+		})
+	} else {
+		c.JSON(http.StatusInternalServerError, gin.H{
+			"error":   "Failed to resume scrape job",
+			"message": "Could not resume the scrape job",
+		})
+	}
 }
 
 // GetStats handles GET /api/stats

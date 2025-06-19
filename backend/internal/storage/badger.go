@@ -533,9 +533,157 @@ func (bs *BadgerStorage) sortCards(cards []models.Card, sortBy, sortOrder string
 	// This could be expanded with proper sorting algorithms
 }
 
+// SaveCardsBatch saves multiple cards in a single transaction for improved performance
+func (bs *BadgerStorage) SaveCardsBatch(cards []models.Card) error {
+	if len(cards) == 0 {
+		return nil
+	}
+
+	return bs.db.Update(func(txn *badger.Txn) error {
+		now := time.Now()
+
+		for _, card := range cards {
+			// Set timestamps
+			card.UpdatedAt = now
+			if card.CreatedAt.IsZero() {
+				card.CreatedAt = now
+			}
+
+			// Serialize card to JSON
+			cardBytes, err := json.Marshal(card)
+			if err != nil {
+				return fmt.Errorf("failed to marshal card %s: %v", card.ID, err)
+			}
+
+			// Save main card record
+			cardKey := bs.cardKey(card.ID)
+			if err := txn.Set(cardKey, cardBytes); err != nil {
+				return fmt.Errorf("failed to save card %s: %v", card.ID, err)
+			}
+
+			// Update indexes
+			if err := bs.updateIndexes(txn, card); err != nil {
+				return fmt.Errorf("failed to update indexes for card %s: %v", card.ID, err)
+			}
+		}
+
+		return nil
+	})
+}
+
+// UpdateCardsBatch updates multiple cards with partial field updates
+func (bs *BadgerStorage) UpdateCardsBatch(updates []CardUpdate) error {
+	if len(updates) == 0 {
+		return nil
+	}
+
+	return bs.db.Update(func(txn *badger.Txn) error {
+		now := time.Now()
+
+		for _, update := range updates {
+			// Get existing card
+			cardKey := bs.cardKey(update.ID)
+			item, err := txn.Get(cardKey)
+			if err != nil {
+				if err == badger.ErrKeyNotFound {
+					continue // Skip non-existent cards
+				}
+				return fmt.Errorf("failed to get card %s for update: %v", update.ID, err)
+			}
+
+			var card models.Card
+			err = item.Value(func(val []byte) error {
+				return json.Unmarshal(val, &card)
+			})
+			if err != nil {
+				return fmt.Errorf("failed to unmarshal card %s: %v", update.ID, err)
+			}
+
+			// Apply field updates
+			if err := bs.applyFieldUpdates(&card, update.Fields); err != nil {
+				return fmt.Errorf("failed to apply updates to card %s: %v", update.ID, err)
+			}
+
+			// Update timestamp
+			card.UpdatedAt = now
+
+			// Save updated card
+			cardBytes, err := json.Marshal(card)
+			if err != nil {
+				return fmt.Errorf("failed to marshal updated card %s: %v", card.ID, err)
+			}
+
+			if err := txn.Set(cardKey, cardBytes); err != nil {
+				return fmt.Errorf("failed to save updated card %s: %v", card.ID, err)
+			}
+
+			// Update indexes
+			if err := bs.updateIndexes(txn, card); err != nil {
+				return fmt.Errorf("failed to update indexes for card %s: %v", card.ID, err)
+			}
+		}
+
+		return nil
+	})
+}
+
+// applyFieldUpdates applies field updates to a card
+func (bs *BadgerStorage) applyFieldUpdates(card *models.Card, updates map[string]interface{}) error {
+	for field, value := range updates {
+		switch field {
+		case "name":
+			if name, ok := value.(string); ok {
+				card.Name = name
+			}
+		case "name_jp":
+			if nameJP, ok := value.(string); ok {
+				card.NameJP = nameJP
+			}
+		case "price":
+			if price, ok := value.(float64); ok {
+				card.Price = price
+			}
+		case "stock":
+			if stock, ok := value.(int); ok {
+				card.Stock = stock
+				card.InStock = stock > 0
+			}
+		case "image_url":
+			if imageURL, ok := value.(string); ok {
+				card.ImageURL = imageURL
+			}
+		case "set_name":
+			if setName, ok := value.(string); ok {
+				card.SetName = setName
+			}
+		case "rarity":
+			if rarity, ok := value.(string); ok {
+				card.Rarity = rarity
+			}
+		case "url":
+			if url, ok := value.(string); ok {
+				card.URL = url
+			}
+		case "in_stock":
+			if inStock, ok := value.(bool); ok {
+				card.InStock = inStock
+			}
+		default:
+			// Ignore unknown fields
+		}
+	}
+	return nil
+}
+
 // StorageStats represents database statistics
 type StorageStats struct {
 	TotalCards   int   `json:"total_cards"`
 	InStockCards int   `json:"in_stock_cards"`
 	DatabaseSize int64 `json:"database_size_bytes"`
+}
+
+// CardUpdate import the CardUpdate type to badger storage
+type CardUpdate struct {
+	ID     string
+	Fields map[string]interface{}
 }

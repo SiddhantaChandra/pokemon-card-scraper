@@ -20,19 +20,33 @@ type Scraper struct {
 	onProgress  func(ScrapeProgress)
 
 	// Status management
-	mu       sync.RWMutex
-	running  bool
-	status   ScrapingStatus
-	stopChan chan struct{}
+	mu        sync.RWMutex
+	running   bool
+	paused    bool
+	status    ScrapingStatus
+	stopChan  chan struct{}
+	pauseChan chan struct{}
 }
 
 // ScrapingStatus represents the current status of scraping operations
 type ScrapingStatus struct {
-	StartTime    time.Time `json:"start_time"`
-	LastUpdated  time.Time `json:"last_updated"`
-	CurrentPage  int       `json:"current_page"`
-	TotalPages   int       `json:"total_pages"`
-	ItemsScraped int       `json:"items_scraped"`
+	StartTime              time.Time      `json:"start_time"`
+	LastUpdated            time.Time      `json:"last_updated"`
+	CurrentPage            int            `json:"current_page"`
+	TotalPages             int            `json:"total_pages"`
+	ItemsScraped           int            `json:"items_scraped"`
+	CardsPerMinute         float64        `json:"cards_per_minute"`
+	EstimatedTimeRemaining *time.Duration `json:"estimated_time_remaining"`
+	IsPaused               bool           `json:"is_paused"`
+	PausedAt               *time.Time     `json:"paused_at,omitempty"`
+}
+
+// ScrapeProgress represents progress information during scraping
+type ScrapeProgress struct {
+	StartTime      time.Time `json:"start_time"`
+	CurrentPage    int       `json:"current_page"`
+	TotalPages     int       `json:"total_pages"`
+	ItemsProcessed int       `json:"items_processed"`
 }
 
 // ScraperConfig holds configuration for the scraper
@@ -63,6 +77,7 @@ func NewScraper(config *ScraperConfig) *Scraper {
 		baseURL:   config.BaseURL,
 		searchURL: config.SearchURL,
 		stopChan:  make(chan struct{}),
+		pauseChan: make(chan struct{}),
 		status: ScrapingStatus{
 			StartTime:   time.Now(),
 			LastUpdated: time.Now(),
@@ -95,6 +110,10 @@ func (s *Scraper) ScrapeAll(progressCallback func(ScrapeProgress)) error {
 
 // ScrapeAllPages scrapes all pages using the URL-based approach
 func (s *Scraper) ScrapeAllPages(params SearchParams, progressCallback func(ScrapeProgress)) error {
+	// Set running state
+	s.setRunning(true)
+	defer s.setRunning(false)
+
 	baseURL := GetBaseURL()
 
 	// First, discover total pages by scraping page 1
@@ -135,6 +154,15 @@ func (s *Scraper) ScrapeAllPages(params SearchParams, progressCallback func(Scra
 		return fmt.Errorf("could not determine total pages")
 	}
 
+	// Apply maxPages limit if specified
+	if params.MaxPages > 0 && params.MaxPages < totalPages {
+		totalPages = params.MaxPages
+		log.Printf("Limiting scraping to %d pages (user requested)", totalPages)
+	}
+
+	// Update status with total pages discovered
+	s.updateStatus(0, totalPages, 0)
+
 	// Initialize progress
 	progress := ScrapeProgress{
 		StartTime:   time.Now(),
@@ -145,11 +173,22 @@ func (s *Scraper) ScrapeAllPages(params SearchParams, progressCallback func(Scra
 	// Save first page cards
 	totalScraped := 0
 	for _, card := range firstPageCards {
+		// Check for stop signal while processing first page cards
+		select {
+		case <-s.stopChan:
+			log.Printf("Stop signal received while processing first page")
+			return nil
+		default:
+		}
+
 		// Call the card found callback if set
 		if s.onCardFound != nil {
 			s.onCardFound(card)
 		}
 		totalScraped++
+
+		// Update status after each card for real-time updates
+		s.updateStatus(1, totalPages, totalScraped)
 	}
 
 	progress.ItemsProcessed = totalScraped
@@ -161,6 +200,31 @@ func (s *Scraper) ScrapeAllPages(params SearchParams, progressCallback func(Scra
 
 	// Now scrape remaining pages
 	for page := 2; page <= totalPages; page++ {
+		// Check for stop signal before processing each page
+		select {
+		case <-s.stopChan:
+			log.Printf("Stop signal received, stopping scraper at page %d", page)
+			return nil
+		default:
+		}
+
+		// Check for pause signal
+		if s.IsPaused() {
+			log.Printf("Scraper paused at page %d", page)
+			for s.IsPaused() {
+				time.Sleep(500 * time.Millisecond)
+
+				// Check for stop signal while paused
+				select {
+				case <-s.stopChan:
+					log.Printf("Stop signal received while paused, stopping scraper at page %d", page)
+					return nil
+				default:
+				}
+			}
+			log.Printf("Scraper resumed at page %d", page)
+		}
+
 		params.Page = page
 		pageURL := BuildSearchURL(params)
 
@@ -180,15 +244,18 @@ func (s *Scraper) ScrapeAllPages(params SearchParams, progressCallback func(Scra
 
 			pageCards = pageInfo.Cards
 
-			// Process cards
+			// Process cards and update status in real-time
 			for _, card := range pageCards {
 				if s.onCardFound != nil {
 					s.onCardFound(card)
 				}
 				totalScraped++
+
+				// Update status after each card for real-time updates
+				s.updateStatus(page, totalPages, totalScraped)
 			}
 
-			// Update progress
+			// Update progress after page completion
 			progress.CurrentPage = page
 			progress.ItemsProcessed = totalScraped
 			if progressCallback != nil {
@@ -447,8 +514,54 @@ func (s *Scraper) Stop() {
 	if s.running {
 		close(s.stopChan)
 		s.running = false
+		s.paused = false
+		s.status.IsPaused = false
+		s.status.PausedAt = nil
 		s.status.LastUpdated = time.Now()
 	}
+}
+
+// Pause pauses the current scraping operation
+func (s *Scraper) Pause() bool {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+
+	if s.running && !s.paused {
+		s.paused = true
+		now := time.Now()
+		s.status.IsPaused = true
+		s.status.PausedAt = &now
+		s.status.LastUpdated = now
+		// Send pause signal
+		select {
+		case s.pauseChan <- struct{}{}:
+		default:
+		}
+		return true
+	}
+	return false
+}
+
+// Resume resumes the paused scraping operation
+func (s *Scraper) Resume() bool {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+
+	if s.running && s.paused {
+		s.paused = false
+		s.status.IsPaused = false
+		s.status.PausedAt = nil
+		s.status.LastUpdated = time.Now()
+		return true
+	}
+	return false
+}
+
+// IsPaused returns whether the scraper is currently paused
+func (s *Scraper) IsPaused() bool {
+	s.mu.RLock()
+	defer s.mu.RUnlock()
+	return s.paused
 }
 
 // updateStatus updates the scraping status (internal method)
@@ -460,6 +573,30 @@ func (s *Scraper) updateStatus(currentPage, totalPages, itemsScraped int) {
 	s.status.TotalPages = totalPages
 	s.status.ItemsScraped = itemsScraped
 	s.status.LastUpdated = time.Now()
+
+	// Calculate cards per minute
+	if s.status.ItemsScraped > 0 {
+		elapsed := time.Since(s.status.StartTime)
+		minutes := elapsed.Minutes()
+		if minutes > 0 {
+			s.status.CardsPerMinute = float64(s.status.ItemsScraped) / minutes
+		}
+	}
+
+	// Calculate estimated time remaining
+	if s.status.CurrentPage > 0 && s.status.TotalPages > 0 {
+		elapsed := time.Since(s.status.StartTime)
+		avgTimePerPage := elapsed / time.Duration(s.status.CurrentPage)
+		remainingPages := s.status.TotalPages - s.status.CurrentPage
+
+		if remainingPages > 0 {
+			estimatedRemaining := avgTimePerPage * time.Duration(remainingPages)
+			s.status.EstimatedTimeRemaining = &estimatedRemaining
+		} else {
+			zero := time.Duration(0)
+			s.status.EstimatedTimeRemaining = &zero
+		}
+	}
 }
 
 // setRunning sets the running status (internal method)
@@ -471,6 +608,14 @@ func (s *Scraper) setRunning(running bool) {
 	if running {
 		s.status.StartTime = time.Now()
 		s.stopChan = make(chan struct{})
+		s.pauseChan = make(chan struct{}, 1) // Buffered to prevent blocking
+		s.paused = false
+		s.status.IsPaused = false
+		s.status.PausedAt = nil
+	} else {
+		s.paused = false
+		s.status.IsPaused = false
+		s.status.PausedAt = nil
 	}
 	s.status.LastUpdated = time.Now()
 }

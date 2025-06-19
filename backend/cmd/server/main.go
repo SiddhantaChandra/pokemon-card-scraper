@@ -38,15 +38,35 @@ func main() {
 	cacheConfig := storage.DefaultCacheConfig()
 	cachedStorage := storage.NewCachedStorage(badgerStorage, cacheConfig)
 
-	// Initialize scraper
-	log.Println("Setting up scraper...")
+	// Initialize batch processor for improved performance
+	log.Println("Setting up batch processor...")
+	batchConfig := storage.DefaultBatchProcessorConfig()
+	batchProcessor := storage.NewBatchProcessor(cachedStorage, batchConfig)
+	defer batchProcessor.Close()
+
+	// Initialize parallel scraper for enhanced performance
+	log.Println("Setting up parallel scraper...")
+	parallelConfig := scraper.DefaultParallelScraperConfig()
+	parallelScraper := scraper.NewParallelScraper(parallelConfig, batchProcessor)
+
+	// Set up parallel scraper callbacks to save cards to batch processor
+	parallelScraper.SetCardFoundCallback(func(card models.Card) {
+		if err := batchProcessor.AddCard(card); err != nil {
+			log.Printf("Failed to add card %s to batch: %v", card.Name, err)
+		} else {
+			log.Printf("Saved card: %s", card.Name)
+		}
+	})
+
+	// Create a wrapper scraper for API compatibility
+	log.Println("Setting up scraper wrapper...")
 	scraperConfig := scraper.DefaultScraperConfig()
 	cardScraper := scraper.NewScraper(scraperConfig)
 
-	// Set up scraper callbacks to save cards to storage
+	// Set up regular scraper callbacks for fallback compatibility
 	cardScraper.SetCardFoundCallback(func(card models.Card) {
-		if err := cachedStorage.SaveCard(card); err != nil {
-			log.Printf("Failed to save card %s: %v", card.Name, err)
+		if err := batchProcessor.AddCard(card); err != nil {
+			log.Printf("Failed to add card %s to batch: %v", card.Name, err)
 		} else {
 			log.Printf("Saved card: %s", card.Name)
 		}

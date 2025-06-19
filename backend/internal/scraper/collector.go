@@ -12,21 +12,21 @@ import (
 
 // CollectorConfig holds configuration for the scraper
 type CollectorConfig struct {
-	UserAgent           string
-	DelayMin            time.Duration
-	DelayMax            time.Duration
-	ConcurrentRequests  int
-	RequestTimeout      time.Duration
-	RetryAttempts       int
-	EnableDebug         bool
+	UserAgent          string
+	DelayMin           time.Duration
+	DelayMax           time.Duration
+	ConcurrentRequests int
+	RequestTimeout     time.Duration
+	RetryAttempts      int
+	EnableDebug        bool
 }
 
 // DefaultCollectorConfig returns sensible default configuration
 func DefaultCollectorConfig() *CollectorConfig {
 	return &CollectorConfig{
 		UserAgent:          "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36",
-		DelayMin:           2 * time.Second,
-		DelayMax:           5 * time.Second,
+		DelayMin:           1 * time.Second,         // Reduced from 2s to 1s
+		DelayMax:           2500 * time.Millisecond, // Reduced from 5s to 2.5s
 		ConcurrentRequests: 2,
 		RequestTimeout:     30 * time.Second,
 		RetryAttempts:      3,
@@ -105,12 +105,12 @@ func setupRetryLogic(c *colly.Collector, maxRetries int) {
 
 		retryCount := retries.(int)
 		if retryCount < maxRetries {
-			log.Printf("Retrying request to %s (attempt %d/%d): %v", 
+			log.Printf("Retrying request to %s (attempt %d/%d): %v",
 				r.Request.URL, retryCount+1, maxRetries, err)
-			
+
 			// Add delay before retry
 			time.Sleep(randomDelay(1*time.Second, 3*time.Second))
-			
+
 			// Clone request with incremented retry count
 			newCtx := colly.NewContext()
 			newCtx.Put("retries", retryCount+1)
@@ -125,7 +125,7 @@ func setupRetryLogic(c *colly.Collector, maxRetries int) {
 func setupErrorHandling(c *colly.Collector) {
 	c.OnError(func(r *colly.Response, err error) {
 		log.Printf("Error scraping %s: %v", r.Request.URL, err)
-		
+
 		// Log response status if available
 		if r != nil {
 			log.Printf("Response status: %d", r.StatusCode)
@@ -148,7 +148,7 @@ func setupLogging(c *colly.Collector, debug bool) {
 		})
 
 		c.OnResponse(func(r *colly.Response) {
-			log.Printf("Received response from: %s (status: %d, size: %d bytes)", 
+			log.Printf("Received response from: %s (status: %d, size: %d bytes)",
 				r.Request.URL, r.StatusCode, len(r.Body))
 		})
 	}
@@ -163,12 +163,12 @@ func setupLogging(c *colly.Collector, debug bool) {
 // CreateProductCollector creates a collector specifically for product pages
 func CreateProductCollector(config *CollectorConfig) *colly.Collector {
 	c := NewCollector(config)
-	
+
 	// Add specific rate limiting for product pages
 	c.Limit(&colly.LimitRule{
 		DomainGlob:  "*torecacamp-pokemon.com*",
-		Parallelism: 1, // More conservative for product pages
-		Delay:       3 * time.Second,
+		Parallelism: 1,                       // More conservative for product pages
+		Delay:       1500 * time.Millisecond, // Reduced from 3s to 1.5s
 	})
 
 	return c
@@ -177,7 +177,7 @@ func CreateProductCollector(config *CollectorConfig) *colly.Collector {
 // CreateSearchCollector creates a collector specifically for search pages
 func CreateSearchCollector(config *CollectorConfig) *colly.Collector {
 	c := NewCollector(config)
-	
+
 	// Search pages can handle slightly more aggressive scraping
 	c.Limit(&colly.LimitRule{
 		DomainGlob:  "*torecacamp-pokemon.com*",
@@ -199,4 +199,4 @@ func ValidateCollector(c *colly.Collector) error {
 	}
 
 	return nil
-} 
+}

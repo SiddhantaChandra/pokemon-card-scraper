@@ -6,6 +6,8 @@ import { scrapeAPI, statsAPI } from '../lib/api';
 export function useScrapeStatus() {
   const [isStarting, setIsStarting] = useState(false);
   const [isStopping, setIsStopping] = useState(false);
+  const [isPausing, setIsPausing] = useState(false);
+  const [isResuming, setIsResuming] = useState(false);
 
   // Fetch scrape status with polling when running
   const {
@@ -100,6 +102,44 @@ export function useScrapeStatus() {
     }
   }, [mutateScrape, mutateStats]);
 
+  // Pause scraping
+  const pauseScraping = useCallback(async () => {
+    setIsPausing(true);
+    try {
+      await scrapeAPI.pause();
+      // Refresh scrape status
+      mutateScrape();
+      return { success: true };
+    } catch (error) {
+      console.error('Failed to pause scraping:', error);
+      return { 
+        success: false, 
+        error: error.message || 'Failed to pause scraping' 
+      };
+    } finally {
+      setIsPausing(false);
+    }
+  }, [mutateScrape]);
+
+  // Resume scraping
+  const resumeScraping = useCallback(async () => {
+    setIsResuming(true);
+    try {
+      await scrapeAPI.resume();
+      // Refresh scrape status
+      mutateScrape();
+      return { success: true };
+    } catch (error) {
+      console.error('Failed to resume scraping:', error);
+      return { 
+        success: false, 
+        error: error.message || 'Failed to resume scraping' 
+      };
+    } finally {
+      setIsResuming(false);
+    }
+  }, [mutateScrape]);
+
   // Calculate progress percentage
   const getProgressPercentage = useCallback(() => {
     if (!scrapeData || !scrapeData.running || !scrapeData.total_pages) return 0;
@@ -163,11 +203,15 @@ export function useScrapeStatus() {
   return {
     // Scraper status data
     isRunning: scrapeData?.running || false,
+    isPaused: scrapeData?.paused || false,
     currentPage: scrapeData?.current_page || 0,
     totalPages: scrapeData?.total_pages || 0,
     itemsScraped: scrapeData?.items_scraped || 0,
+    cardsPerMinute: scrapeData?.cards_per_minute || 0,
+    estimatedTimeRemainingBackend: scrapeData?.estimated_time_remaining,
     startTime: scrapeData?.start_time,
     lastUpdated: scrapeData?.last_updated,
+    pausedAt: scrapeData?.paused_at,
     
     // Database stats
     totalCardsInDatabase: statsData?.database?.total_cards || 0,
@@ -175,7 +219,7 @@ export function useScrapeStatus() {
     priceRange: statsData?.database?.price_range || { min: 0, max: 0 },
     
     // Calculated values
-    progressPercentage: getProgressPercentage(),
+    progressPercentage: scrapeData?.progress_percent || getProgressPercentage(),
     estimatedTimeRemaining: getEstimatedTimeRemaining(),
     lastUpdatedText: getLastUpdatedText(),
     
@@ -183,17 +227,23 @@ export function useScrapeStatus() {
     isLoading: scrapeLoading || statsLoading,
     isStarting,
     isStopping,
+    isPausing,
+    isResuming,
     error: scrapeError || statsError,
     
     // Actions
     startScraping,
     stopScraping,
+    pauseScraping,
+    resumeScraping,
     restartScraping,
     refresh,
     
     // Helper methods
     canStart: !scrapeData?.running && !isStarting,
-    canStop: scrapeData?.running && !isStopping,
+    canStop: scrapeData?.running && !isStopping && !scrapeData?.paused,
+    canPause: scrapeData?.running && !scrapeData?.paused && !isPausing,
+    canResume: scrapeData?.running && scrapeData?.paused && !isResuming,
     canRestart: !isStarting,
   };
 } 
