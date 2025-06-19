@@ -4,6 +4,7 @@ import (
 	"context"
 	"fmt"
 	"log"
+	"strings"
 	"sync"
 	"time"
 
@@ -21,6 +22,7 @@ type ParallelScraper struct {
 	// Worker management
 	pageWorkers int
 	pageQueue   chan PageJob
+	retryQueue  chan PageJob // Add retry queue for failed requests
 	resultQueue chan PageResult
 	errorQueue  chan error
 
@@ -47,6 +49,7 @@ type ParallelScraperConfig struct {
 	FlushInterval     time.Duration
 	MaxRetries        int
 	RetryDelay        time.Duration
+	BatchDelay        time.Duration // Add configurable delay between batches
 
 	// Inherited from original scraper
 	BaseURL         string
@@ -64,11 +67,12 @@ type PageJob struct {
 
 // PageResult represents the result of scraping a page
 type PageResult struct {
-	PageNum   int
-	Cards     []models.Card
-	Error     error
-	Duration  time.Duration
-	Timestamp time.Time
+	PageNum     int
+	Cards       []models.Card
+	Error       error
+	Duration    time.Duration
+	Timestamp   time.Time
+	OriginalJob PageJob // Add original job for retry information
 }
 
 // ParallelScrapingStatus tracks the status of parallel scraping
@@ -87,12 +91,13 @@ type ParallelScrapingStatus struct {
 // DefaultParallelScraperConfig returns sensible defaults for parallel scraping
 func DefaultParallelScraperConfig() *ParallelScraperConfig {
 	return &ParallelScraperConfig{
-		PageWorkers:       10,
-		CollectorPoolSize: 20,
+		PageWorkers:       2, // Reduce from 3 to 2 to be very conservative
+		CollectorPoolSize: 4, // Reduce from 6 to 4
 		BatchSize:         100,
 		FlushInterval:     5 * time.Second,
 		MaxRetries:        3,
-		RetryDelay:        time.Second,
+		RetryDelay:        5 * time.Second, // Increase retry delay from 3s to 5s
+		BatchDelay:        3 * time.Second, // Set a default BatchDelay
 		BaseURL:           "https://torecacamp-pokemon.com",
 		SearchURL:         "https://torecacamp-pokemon.com/search?type=product&options%5Bprefix%5D=last&options%5Bunavailable_products%5D=last&q=.",
 		CollectorConfig:   DefaultCollectorConfig(),
@@ -105,11 +110,11 @@ func NewParallelScraper(config *ParallelScraperConfig, batchProcessor *storage.B
 		config = DefaultParallelScraperConfig()
 	}
 
-	// Optimize collector config for parallel processing
+	// Optimize collector config for parallel processing with conservative settings
 	collectorConfig := config.CollectorConfig
 	collectorConfig.ConcurrentRequests = config.PageWorkers
-	collectorConfig.DelayMin = 500 * time.Millisecond
-	collectorConfig.DelayMax = 1 * time.Second
+	collectorConfig.DelayMin = 2 * time.Second // Increase from 1s to 2s
+	collectorConfig.DelayMax = 3 * time.Second // Increase from 2s to 3s
 
 	ctx, cancel := context.WithCancel(context.Background())
 
@@ -119,6 +124,7 @@ func NewParallelScraper(config *ParallelScraperConfig, batchProcessor *storage.B
 		batchProcessor: batchProcessor,
 		pageWorkers:    config.PageWorkers,
 		pageQueue:      make(chan PageJob, config.PageWorkers*2),
+		retryQueue:     make(chan PageJob, config.PageWorkers*2),
 		resultQueue:    make(chan PageResult, config.PageWorkers*2),
 		errorQueue:     make(chan error, config.PageWorkers),
 		ctx:            ctx,
@@ -177,29 +183,62 @@ func (ps *ParallelScraper) ScrapeAllPagesParallel(params SearchParams, progressC
 	ps.wg.Add(1)
 	go ps.resultCollector(progressCallback)
 
-	// Queue all pages for processing
-	for page := 1; page <= totalPages; page++ {
-		params.Page = page
-		pageURL := BuildSearchURL(params)
+	// Queue pages in batches with delay to avoid overwhelming the server
+	batchSize := ps.pageWorkers // Use number of workers as batch size
+	batchDelay := ps.config.BatchDelay
 
-		select {
-		case ps.pageQueue <- PageJob{
-			PageURL:   pageURL,
-			PageNum:   page,
-			Retries:   0,
-			Timestamp: time.Now(),
-		}:
-		case <-ps.ctx.Done():
-			log.Println("Scraping cancelled, stopping page queueing")
-			break
+	log.Printf("Queuing %d pages in batches of %d with %v delay between batches",
+		totalPages, batchSize, batchDelay)
+
+	for page := 1; page <= totalPages; page += batchSize {
+		// Queue a batch of pages
+		batchEnd := page + batchSize - 1
+		if batchEnd > totalPages {
+			batchEnd = totalPages
+		}
+
+		log.Printf("Queuing batch: pages %d-%d", page, batchEnd)
+
+		for batchPage := page; batchPage <= batchEnd; batchPage++ {
+			params.Page = batchPage
+			pageURL := BuildSearchURL(params)
+
+			select {
+			case ps.pageQueue <- PageJob{
+				PageURL:   pageURL,
+				PageNum:   batchPage,
+				Retries:   0,
+				Timestamp: time.Now(),
+			}:
+			case <-ps.ctx.Done():
+				log.Println("Scraping cancelled, stopping page queueing")
+				goto cleanup
+			}
+		}
+
+		// Add delay between batches (except for the last batch)
+		if batchEnd < totalPages {
+			log.Printf("Waiting %v before queuing next batch...", batchDelay)
+			select {
+			case <-time.After(batchDelay):
+				// Continue to next batch
+			case <-ps.ctx.Done():
+				log.Println("Scraping cancelled during batch delay")
+				goto cleanup
+			}
 		}
 	}
 
+cleanup:
 	// Close the page queue to signal workers to finish
 	close(ps.pageQueue)
 
 	// Wait for all workers to complete
 	ps.wg.Wait()
+
+	// Close result queue and retry queue
+	close(ps.resultQueue)
+	close(ps.retryQueue)
 
 	// Flush any remaining cards in batch processor
 	if ps.batchProcessor != nil {
@@ -227,31 +266,60 @@ func (ps *ParallelScraper) pageWorker(workerID int) {
 		select {
 		case job, ok := <-ps.pageQueue:
 			if !ok {
-				// Channel closed, worker should exit
+				// Channel closed, check retry queue
+				select {
+				case retryJob, retryOk := <-ps.retryQueue:
+					if !retryOk {
+						return
+					}
+					ps.processJobWithTracking(retryJob, workerID)
+				default:
+					return
+				}
+				continue
+			}
+
+			ps.processJobWithTracking(job, workerID)
+
+		case retryJob, ok := <-ps.retryQueue:
+			if !ok {
 				return
 			}
 
-			ps.mu.Lock()
-			ps.status.ActiveWorkers++
-			ps.status.PagesInProgress++
-			ps.mu.Unlock()
-
-			result := ps.processPage(job, workerID)
-
-			ps.mu.Lock()
-			ps.status.ActiveWorkers--
-			ps.status.PagesInProgress--
-			ps.mu.Unlock()
-
-			select {
-			case ps.resultQueue <- result:
-			case <-ps.ctx.Done():
-				return
+			// Add delay before processing retry to implement backoff
+			if retryJob.Retries > 0 {
+				backoffDelay := ps.config.RetryDelay * time.Duration(1<<uint(retryJob.Retries-1))
+				log.Printf("Worker %d: Backing off for %v before retrying page %d (attempt %d/%d)",
+					workerID, backoffDelay, retryJob.PageNum, retryJob.Retries+1, ps.config.MaxRetries)
+				time.Sleep(backoffDelay)
 			}
+
+			ps.processJobWithTracking(retryJob, workerID)
 
 		case <-ps.ctx.Done():
 			return
 		}
+	}
+}
+
+// processJobWithTracking processes a job and updates status tracking
+func (ps *ParallelScraper) processJobWithTracking(job PageJob, workerID int) {
+	ps.mu.Lock()
+	ps.status.ActiveWorkers++
+	ps.status.PagesInProgress++
+	ps.mu.Unlock()
+
+	result := ps.processPage(job, workerID)
+
+	ps.mu.Lock()
+	ps.status.ActiveWorkers--
+	ps.status.PagesInProgress--
+	ps.mu.Unlock()
+
+	select {
+	case ps.resultQueue <- result:
+	case <-ps.ctx.Done():
+		return
 	}
 }
 
@@ -260,12 +328,18 @@ func (ps *ParallelScraper) processPage(job PageJob, workerID int) PageResult {
 	startTime := time.Now()
 
 	result := PageResult{
-		PageNum:   job.PageNum,
-		Timestamp: startTime,
+		PageNum:     job.PageNum,
+		Timestamp:   startTime,
+		OriginalJob: job,
 	}
 
 	// Get collector from pool
 	collector := ps.collectorPool.Get()
+	if collector == nil {
+		result.Error = fmt.Errorf("failed to get collector from pool for page %d", job.PageNum)
+		result.Duration = time.Since(startTime)
+		return result
+	}
 	defer ps.collectorPool.Put(collector)
 
 	var pageCards []models.Card
@@ -283,7 +357,16 @@ func (ps *ParallelScraper) processPage(job PageJob, workerID int) PageResult {
 
 	// Visit the page
 	if err := collector.Visit(job.PageURL); err != nil {
-		result.Error = fmt.Errorf("failed to visit page %d: %w", job.PageNum, err)
+		// Check if it's a rate limiting error
+		if strings.Contains(err.Error(), "Too Many Requests") || strings.Contains(err.Error(), "429") {
+			log.Printf("Worker %d: Rate limited on page %d (attempt %d/%d)",
+				workerID, job.PageNum, job.Retries+1, ps.config.MaxRetries)
+
+			// Mark as rate limited for retry (don't sleep here, backoff handled in worker)
+			result.Error = fmt.Errorf("RATE_LIMITED: page %d", job.PageNum)
+		} else {
+			result.Error = fmt.Errorf("failed to visit page %d: %w", job.PageNum, err)
+		}
 	} else {
 		collector.Wait()
 
@@ -323,18 +406,46 @@ func (ps *ParallelScraper) resultCollector(progressCallback func(ScrapeProgress)
 				return
 			}
 
-			processedPages++
-			totalDuration += result.Duration
-
 			if result.Error != nil {
 				log.Printf("Error processing page %d: %v", result.PageNum, result.Error)
+
+				// Check if it's a rate limiting error that should be retried
+				if strings.Contains(result.Error.Error(), "RATE_LIMITED") {
+					originalJob := result.OriginalJob
+					if originalJob.Retries < ps.config.MaxRetries {
+						// Increment retry count and re-queue
+						retryJob := PageJob{
+							PageURL:   originalJob.PageURL,
+							PageNum:   originalJob.PageNum,
+							Retries:   originalJob.Retries + 1,
+							Timestamp: time.Now(),
+						}
+
+						select {
+						case ps.retryQueue <- retryJob:
+							log.Printf("Re-queued page %d for retry (attempt %d/%d)",
+								retryJob.PageNum, retryJob.Retries+1, ps.config.MaxRetries)
+						case <-ps.ctx.Done():
+							return
+						}
+
+						// Don't increment error count for retries
+						continue
+					} else {
+						log.Printf("Page %d exceeded max retries (%d), giving up",
+							result.PageNum, ps.config.MaxRetries)
+					}
+				}
+
 				ps.mu.Lock()
 				ps.status.ErrorCount++
 				ps.mu.Unlock()
-
-				// Retry logic could be added here
 				continue
 			}
+
+			// Successful result
+			processedPages++
+			totalDuration += result.Duration
 
 			// Process cards from this page
 			for _, card := range result.Cards {
@@ -388,6 +499,9 @@ func (ps *ParallelScraper) getPaginationInfo(params SearchParams) (totalPages, t
 	pageURL := BuildSearchURL(params)
 
 	collector := ps.collectorPool.Get()
+	if collector == nil {
+		return 0, 0, fmt.Errorf("failed to get collector from pool")
+	}
 	defer ps.collectorPool.Put(collector)
 
 	collector.OnHTML("html", func(e *colly.HTMLElement) {
@@ -481,6 +595,9 @@ func (ps *ParallelScraper) ScrapeAllPages(params SearchParams, progressCallback 
 // ScrapePage scrapes a single page (simplified version for interface compatibility)
 func (ps *ParallelScraper) ScrapePage(pageURL string) ([]models.Card, error) {
 	collector := ps.collectorPool.Get()
+	if collector == nil {
+		return nil, fmt.Errorf("failed to get collector from pool")
+	}
 	defer ps.collectorPool.Put(collector)
 
 	var pageCards []models.Card

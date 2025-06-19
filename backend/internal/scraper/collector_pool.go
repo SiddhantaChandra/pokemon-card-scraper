@@ -113,35 +113,25 @@ func (cp *CollectorPool) createCollector() *colly.Collector {
 
 // resetCollector resets a collector for reuse
 func (cp *CollectorPool) resetCollector(collector *colly.Collector) {
-	// Clear any existing handlers
-	collector.OnHTML("*", nil)
-	collector.OnRequest(nil)
-	collector.OnResponse(nil)
-	collector.OnError(nil)
-	collector.OnScraped(nil)
+	// Wait for any pending requests to complete first
+	collector.Wait()
 
-	// Reset common request headers
-	collector.OnRequest(func(r *colly.Request) {
-		r.Headers.Set("Accept", "text/html,application/xhtml+xml,application/xml;q=0.9,image/webp,*/*;q=0.8")
-		r.Headers.Set("Accept-Language", "en-US,en;q=0.5")
-		r.Headers.Set("Accept-Encoding", "gzip, deflate")
-		r.Headers.Set("Connection", "keep-alive")
-		r.Headers.Set("Upgrade-Insecure-Requests", "1")
-		r.Headers.Set("Cache-Control", "no-cache")
-	})
+	// Don't clear handlers - just let the new usage set up fresh ones
+	// This avoids nil pointer issues with colly's internal state
 }
 
 // cleanupCollector cleans up a collector before returning it to the pool
 func (cp *CollectorPool) cleanupCollector(collector *colly.Collector) {
-	// Clear any remaining handlers
-	collector.OnHTML("*", nil)
-	collector.OnRequest(nil)
-	collector.OnResponse(nil)
-	collector.OnError(nil)
-	collector.OnScraped(nil)
-
 	// Wait for any pending requests to complete
 	collector.Wait()
+
+	// Don't try to clear handlers here as it can cause issues
+	// Let the next usage override them
+}
+
+// createFreshCollector creates a brand new collector for reset purposes
+func (cp *CollectorPool) createFreshCollector() *colly.Collector {
+	return NewCollector(cp.config)
 }
 
 // Close closes the collector pool and cleans up resources

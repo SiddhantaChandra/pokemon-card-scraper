@@ -25,9 +25,9 @@ type CollectorConfig struct {
 func DefaultCollectorConfig() *CollectorConfig {
 	return &CollectorConfig{
 		UserAgent:          "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36",
-		DelayMin:           500 * time.Millisecond, // Reduced from 1s to 500ms
-		DelayMax:           1 * time.Second,        // Reduced from 2.5s to 1s
-		ConcurrentRequests: 10,                     // Increased from 2 to 10
+		DelayMin:           1 * time.Second, // Increase from 500ms to 1s
+		DelayMax:           2 * time.Second, // Increase from 1s to 2s
+		ConcurrentRequests: 5,               // Reduce from 10 to 5
 		RequestTimeout:     30 * time.Second,
 		RetryAttempts:      3,
 		EnableDebug:        false,

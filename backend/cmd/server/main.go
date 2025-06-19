@@ -44,22 +44,53 @@ func main() {
 	batchProcessor := storage.NewBatchProcessor(cachedStorage, batchConfig)
 	defer batchProcessor.Close()
 
-	// Initialize parallel scraper for enhanced performance
-	log.Println("Setting up parallel scraper...")
-	parallelConfig := scraper.DefaultParallelScraperConfig()
-	parallelConfig.PageWorkers = 10 // Scrape 10 pages concurrently
-	parallelScraper := scraper.NewParallelScraper(parallelConfig, batchProcessor)
+	// Initialize scraper based on environment variable
+	useParallelScraper := os.Getenv("USE_PARALLEL_SCRAPER")
+	if useParallelScraper == "" {
+		useParallelScraper = "true" // Default to parallel scraper
+	}
 
-	// Set up parallel scraper callbacks to save cards to batch processor
-	parallelScraper.SetCardFoundCallback(func(card models.Card) {
-		if err := batchProcessor.AddCard(card); err != nil {
-			log.Printf("Failed to add card %s to batch: %v", card.Name, err)
-		} else {
-			log.Printf("Saved card: %s", card.Name)
-		}
-	})
+	var scraperInstance scraper.ScraperInterface
 
-	// Create a wrapper scraper for API compatibility
+	if useParallelScraper == "true" {
+		// Initialize parallel scraper for enhanced performance
+		log.Println("Setting up parallel scraper...")
+		parallelConfig := scraper.DefaultParallelScraperConfig()
+		parallelConfig.PageWorkers = 5 // Use 5 concurrent workers to avoid rate limiting
+		parallelScraper := scraper.NewParallelScraper(parallelConfig, batchProcessor)
+
+		log.Printf("Parallel scraper configured with %d workers and %d collector pool size",
+			parallelConfig.PageWorkers, parallelConfig.CollectorPoolSize)
+
+		// Set up parallel scraper callbacks to save cards to batch processor
+		parallelScraper.SetCardFoundCallback(func(card models.Card) {
+			if err := batchProcessor.AddCard(card); err != nil {
+				log.Printf("Failed to add card %s to batch: %v", card.Name, err)
+			} else {
+				log.Printf("Saved card: %s", card.Name)
+			}
+		})
+
+		scraperInstance = parallelScraper
+	} else {
+		// Use regular scraper as fallback
+		log.Println("Setting up regular scraper (parallel scraping disabled)...")
+		scraperConfig := scraper.DefaultScraperConfig()
+		regularScraper := scraper.NewScraper(scraperConfig)
+
+		// Set up regular scraper callbacks
+		regularScraper.SetCardFoundCallback(func(card models.Card) {
+			if err := batchProcessor.AddCard(card); err != nil {
+				log.Printf("Failed to add card %s to batch: %v", card.Name, err)
+			} else {
+				log.Printf("Saved card: %s", card.Name)
+			}
+		})
+
+		scraperInstance = regularScraper
+	}
+
+	// Create a wrapper scraper for API compatibility (keep for potential fallback)
 	log.Println("Setting up scraper wrapper...")
 	scraperConfig := scraper.DefaultScraperConfig()
 	cardScraper := scraper.NewScraper(scraperConfig)
@@ -86,7 +117,7 @@ func main() {
 	}
 
 	// Create API server with parallel scraper as primary scraper
-	server, err := api.NewServer(cachedStorage, parallelScraper, serverConfig)
+	server, err := api.NewServer(cachedStorage, scraperInstance, serverConfig)
 	if err != nil {
 		log.Fatalf("Failed to create API server: %v", err)
 	}
