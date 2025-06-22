@@ -8,7 +8,7 @@ import SearchBar from '../components/SearchBar';
 import CardGrid from '../components/CardGrid';
 import ScrapeStatus from '../components/ScrapeStatus';
 import ScraperControls from '../components/ScraperControls';
-import Pagination from '../components/Pagination';
+import Pagination, { CompactPagination } from '../components/Pagination';
 
 export default function Home() {
   const [activeTab, setActiveTab] = useState('cards');
@@ -119,7 +119,7 @@ export default function Home() {
               <div className="flex items-center space-x-4">
               <Image src="/images/PikaMascot.webp" alt="SCRAPER 9000" width={48} height={48} />
                 <h1 className="text-2xl font-bold text-gray-900 dark:text-white">
-                  SCRAPER 9000
+                  SCRAPER 6900
                 </h1>
                 
                 <div className="hidden sm:block">
@@ -250,7 +250,7 @@ export default function Home() {
                 </div>
               )}
 
-              {/* Results Summary */}
+              {/* Results Summary and Top Pagination */}
               {!isLoading && !error && (
                 <div className="flex items-center justify-between text-sm text-gray-600 dark:text-gray-400">
                   <div>
@@ -263,24 +263,34 @@ export default function Home() {
                       <span>No cards found</span>
                     )}
                   </div>
-                  {totalPages > 1 && (
-                    <div>
-                      Page <span className="font-medium text-gray-900 dark:text-white">{currentPage}</span> of{' '}
-                      <span className="font-medium text-gray-900 dark:text-white">{totalPages}</span>
-                    </div>
-                  )}
+                  <div className="flex items-center space-x-4">
+                    {totalPages > 1 && (
+                      <div className="hidden sm:block">
+                        Page <span className="font-medium text-gray-900 dark:text-white">{currentPage}</span> of{' '}
+                        <span className="font-medium text-gray-900 dark:text-white">{totalPages}</span>
+                      </div>
+                    )}
+                    {/* Top Compact Pagination */}
+                    <CompactPagination
+                      currentPage={currentPage}
+                      totalPages={totalPages}
+                      onPageChange={goToPage}
+                    />
+                  </div>
                 </div>
               )}
 
               {/* Cards Grid */}
-              <CardGrid
-                cards={cards}
-                isLoading={isLoading}
-                isEmpty={isEmpty}
-                error={error}
-              />
+              <div id="cards-grid-top">
+                <CardGrid
+                  cards={cards}
+                  isLoading={isLoading}
+                  isEmpty={isEmpty}
+                  error={error}
+                />
+              </div>
 
-              {/* Pagination */}
+              {/* Bottom Pagination with Scroll to Top */}
               {totalPages > 1 && (
                 <Pagination
                   currentPage={currentPage}
@@ -289,6 +299,8 @@ export default function Home() {
                   pageSize={pageSize}
                   onPageChange={goToPage}
                   className="mt-8"
+                  scrollToTop={true}
+                  scrollTarget="#cards-grid-top"
                 />
               )}
 

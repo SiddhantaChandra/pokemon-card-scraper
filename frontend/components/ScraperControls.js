@@ -83,7 +83,7 @@ const ScraperControls = ({ className = '' }) => {
 
     try {
       setIsResetting(true);
-      await databaseAPI.resetDatabase();
+      await databaseAPI.reset();
       setShowResetConfirm(false);
       // Refresh stats after reset
       refresh();

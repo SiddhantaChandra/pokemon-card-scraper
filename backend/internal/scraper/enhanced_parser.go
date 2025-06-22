@@ -286,21 +286,25 @@ func generateCardID(productURL string) string {
 
 // extractCondition extracts the card condition from the name
 func extractCondition(name string) models.CardCondition {
-	// Check for condition indicators in the title
-	conditionPatterns := map[string]models.CardCondition{
-		"状態A+": models.ConditionAPlus,
-		"状態A-": models.ConditionAMinus,
-		"状態A":  models.ConditionA,
-		"状態B+": models.ConditionBPlus,
-		"状態B-": models.ConditionBMinus,
-		"状態B":  models.ConditionB,
-		"状態C":  models.ConditionC,
-		"状態D":  models.ConditionD,
+	// Use regex to match exact condition patterns to avoid false matches
+	// The patterns match the condition followed by a non-alphanumeric character or end of string
+	conditionPatterns := []struct {
+		pattern   *regexp.Regexp
+		condition models.CardCondition
+	}{
+		{regexp.MustCompile(`状態A\+(?:[^A-Za-z0-9]|$)`), models.ConditionAPlus},
+		{regexp.MustCompile(`状態A-(?:[^A-Za-z0-9]|$)`), models.ConditionAMinus},
+		{regexp.MustCompile(`状態B\+(?:[^A-Za-z0-9]|$)`), models.ConditionBPlus},
+		{regexp.MustCompile(`状態B-(?:[^A-Za-z0-9]|$)`), models.ConditionBMinus},
+		{regexp.MustCompile(`状態A(?:[^A-Za-z0-9+\-]|$)`), models.ConditionA},
+		{regexp.MustCompile(`状態B(?:[^A-Za-z0-9+\-]|$)`), models.ConditionB},
+		{regexp.MustCompile(`状態C(?:[^A-Za-z0-9]|$)`), models.ConditionC},
+		{regexp.MustCompile(`状態D(?:[^A-Za-z0-9]|$)`), models.ConditionD},
 	}
 
-	for pattern, condition := range conditionPatterns {
-		if strings.Contains(name, pattern) {
-			return condition
+	for _, p := range conditionPatterns {
+		if p.pattern.MatchString(name) {
+			return p.condition
 		}
 	}
 

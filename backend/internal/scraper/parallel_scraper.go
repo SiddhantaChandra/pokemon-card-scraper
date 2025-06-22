@@ -230,13 +230,16 @@ func (ps *ParallelScraper) ScrapeAllPagesParallel(params SearchParams, progressC
 	}
 
 cleanup:
+	// Signal cancellation to all goroutines
+	ps.cancel()
+
 	// Close the page queue to signal workers to finish
 	close(ps.pageQueue)
 
 	// Wait for all workers to complete
 	ps.wg.Wait()
 
-	// Close result queue and retry queue
+	// Now it's safe to close result queue and retry queue
 	close(ps.resultQueue)
 	close(ps.retryQueue)
 
@@ -320,6 +323,9 @@ func (ps *ParallelScraper) processJobWithTracking(job PageJob, workerID int) {
 	case ps.resultQueue <- result:
 	case <-ps.ctx.Done():
 		return
+	default:
+		// Channel might be closed during shutdown, log and continue
+		log.Printf("Failed to send result for page %d - result queue unavailable", result.PageNum)
 	}
 }
 
@@ -427,6 +433,9 @@ func (ps *ParallelScraper) resultCollector(progressCallback func(ScrapeProgress)
 								retryJob.PageNum, retryJob.Retries+1, ps.config.MaxRetries)
 						case <-ps.ctx.Done():
 							return
+						default:
+							// Channel might be closed, log and continue
+							log.Printf("Failed to re-queue page %d - retry queue unavailable", retryJob.PageNum)
 						}
 
 						// Don't increment error count for retries

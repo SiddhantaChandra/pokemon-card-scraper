@@ -11,7 +11,7 @@ services:
       - DB_PATH=/data/badger
       - SCRAPE_INTERVAL=300
       - USE_PARALLEL_SCRAPER=true
-      - DEBUG=false
+      - DEBUG=true
       - PORT=8080
     restart: unless-stopped
     healthcheck:
@@ -25,27 +25,21 @@ services:
     build:
       context: .
       dockerfile: docker/frontend.Dockerfile
-      target: production
+      target: development
     ports:
       - "3000:3000"
     volumes:
       - ./frontend:/app
       - /app/node_modules
-      - /app/.next
     environment:
-      - NODE_ENV=production
+      - NODE_ENV=development
       - NEXT_TELEMETRY_DISABLED=1
       - BACKEND_URL=http://backend:8080
+      - WATCHPACK_POLLING=true
     depends_on:
       backend:
         condition: service_healthy
     restart: unless-stopped
-    healthcheck:
-      test: ["CMD", "wget", "--quiet", "--tries=1", "--spider", "http://localhost:3000"]
-      interval: 30s
-      timeout: 10s
-      retries: 3
-      start_period: 40s
 
 volumes:
   data:

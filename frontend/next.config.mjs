@@ -24,10 +24,21 @@ const nextConfig = {
 
   // API rewrites for backend communication
   async rewrites() {
+    // Determine backend URL based on environment
+    const isDevelopment = process.env.NODE_ENV === 'development';
+    const backendUrl = process.env.BACKEND_URL || 
+                      (isDevelopment ? 'http://localhost:8080' : 'http://backend:8080');
+    
+    console.log(`Environment: ${process.env.NODE_ENV}, Backend URL: ${backendUrl}`);
+    
     return [
       {
         source: '/api/:path*',
-        destination: 'http://backend:8080/api/:path*', // Backend API via Docker service name
+        destination: `${backendUrl}/api/:path*`,
+      },
+      {
+        source: '/health',
+        destination: `${backendUrl}/health`,
       },
     ];
   },
@@ -50,6 +61,10 @@ const nextConfig = {
       },
     ];
   },
+
+  // Optimize for production
+  poweredByHeader: false,
+  compress: true,
 };
 
 export default nextConfig;
