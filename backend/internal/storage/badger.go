@@ -278,9 +278,19 @@ func (bs *BadgerStorage) GetStats() (*StorageStats, error) {
 		iterator := txn.NewIterator(opts)
 		defer iterator.Close()
 
+		// Count cards
 		prefix := []byte("card:")
 		for iterator.Seek(prefix); iterator.ValidForPrefix(prefix); iterator.Next() {
 			stats.TotalCards++
+		}
+
+		// Reset iterator and count trackers
+		iterator.Close()
+		iterator = txn.NewIterator(opts)
+
+		trackerPrefix := []byte("tracker:")
+		for iterator.Seek(trackerPrefix); iterator.ValidForPrefix(trackerPrefix); iterator.Next() {
+			stats.TotalTrackers++
 		}
 
 		return nil
@@ -707,13 +717,487 @@ func (bs *BadgerStorage) applyFieldUpdates(card *models.Card, updates map[string
 
 // StorageStats represents database statistics
 type StorageStats struct {
-	TotalCards   int   `json:"total_cards"`
-	InStockCards int   `json:"in_stock_cards"`
-	DatabaseSize int64 `json:"database_size_bytes"`
+	TotalCards    int   `json:"total_cards"`
+	InStockCards  int   `json:"in_stock_cards"`
+	TotalTrackers int   `json:"total_trackers"`
+	DatabaseSize  int64 `json:"database_size_bytes"`
 }
 
 // CardUpdate import the CardUpdate type to badger storage
 type CardUpdate struct {
 	ID     string
 	Fields map[string]interface{}
+}
+
+// Tracker Storage Methods
+
+// SaveTracker saves a tracker to the database
+func (bs *BadgerStorage) SaveTracker(tracker models.TrackerItem) error {
+	return bs.db.Update(func(txn *badger.Txn) error {
+		// Set timestamps
+		now := time.Now()
+		tracker.LastUpdated = now
+		if tracker.CreatedAt.IsZero() {
+			tracker.CreatedAt = now
+		}
+
+		// Serialize tracker to JSON
+		trackerBytes, err := json.Marshal(tracker)
+		if err != nil {
+			return fmt.Errorf("failed to marshal tracker: %v", err)
+		}
+
+		// Save main tracker record
+		trackerKey := bs.trackerKey(tracker.ID)
+		if err := txn.Set(trackerKey, trackerBytes); err != nil {
+			return fmt.Errorf("failed to save tracker: %v", err)
+		}
+
+		// Update tracker indexes
+		if err := bs.updateTrackerIndexes(txn, tracker); err != nil {
+			return fmt.Errorf("failed to update tracker indexes: %v", err)
+		}
+
+		return nil
+	})
+}
+
+// GetTracker retrieves a tracker by ID
+func (bs *BadgerStorage) GetTracker(id string) (*models.TrackerItem, error) {
+	var tracker models.TrackerItem
+
+	err := bs.db.View(func(txn *badger.Txn) error {
+		trackerKey := bs.trackerKey(id)
+		item, err := txn.Get(trackerKey)
+		if err != nil {
+			return err
+		}
+
+		return item.Value(func(val []byte) error {
+			return json.Unmarshal(val, &tracker)
+		})
+	})
+
+	if err != nil {
+		if err == badger.ErrKeyNotFound {
+			return nil, fmt.Errorf("tracker not found")
+		}
+		return nil, fmt.Errorf("failed to get tracker: %v", err)
+	}
+
+	return &tracker, nil
+}
+
+// SearchTrackers searches for trackers based on filter options
+func (bs *BadgerStorage) SearchTrackers(filters models.TrackerFilterOptions) (*models.TrackerSearchResult, error) {
+	var allTrackers []models.TrackerItem
+
+	err := bs.db.View(func(txn *badger.Txn) error {
+		opts := badger.DefaultIteratorOptions
+		opts.PrefetchValues = true
+		iterator := txn.NewIterator(opts)
+		defer iterator.Close()
+
+		prefix := []byte("tracker:")
+		for iterator.Seek(prefix); iterator.ValidForPrefix(prefix); iterator.Next() {
+			item := iterator.Item()
+
+			err := item.Value(func(val []byte) error {
+				var tracker models.TrackerItem
+				if err := json.Unmarshal(val, &tracker); err != nil {
+					return err
+				}
+
+				if bs.matchesTrackerFilters(tracker, filters) {
+					allTrackers = append(allTrackers, tracker)
+				}
+
+				return nil
+			})
+
+			if err != nil {
+				return err
+			}
+		}
+
+		return nil
+	})
+
+	if err != nil {
+		return nil, fmt.Errorf("failed to search trackers: %v", err)
+	}
+
+	// Sort results
+	bs.sortTrackers(allTrackers, filters.SortBy, filters.SortOrder)
+
+	// Apply pagination
+	totalTrackers := len(allTrackers)
+	startIdx := (filters.Page - 1) * filters.PageSize
+	endIdx := startIdx + filters.PageSize
+
+	if startIdx >= totalTrackers {
+		startIdx = totalTrackers
+	}
+	if endIdx > totalTrackers {
+		endIdx = totalTrackers
+	}
+
+	var paginatedTrackers []models.TrackerItem
+	if startIdx < endIdx {
+		paginatedTrackers = allTrackers[startIdx:endIdx]
+	}
+
+	// Calculate total pages
+	totalPages := (totalTrackers + filters.PageSize - 1) / filters.PageSize
+	if totalPages == 0 {
+		totalPages = 1
+	}
+
+	return &models.TrackerSearchResult{
+		Trackers:   paginatedTrackers,
+		Total:      totalTrackers,
+		Page:       filters.Page,
+		PageSize:   filters.PageSize,
+		TotalPages: totalPages,
+	}, nil
+}
+
+// GetAllTrackers retrieves all trackers
+func (bs *BadgerStorage) GetAllTrackers() ([]models.TrackerItem, error) {
+	var trackers []models.TrackerItem
+
+	err := bs.db.View(func(txn *badger.Txn) error {
+		opts := badger.DefaultIteratorOptions
+		opts.PrefetchValues = true
+		iterator := txn.NewIterator(opts)
+		defer iterator.Close()
+
+		prefix := []byte("tracker:")
+		for iterator.Seek(prefix); iterator.ValidForPrefix(prefix); iterator.Next() {
+			item := iterator.Item()
+
+			err := item.Value(func(val []byte) error {
+				var tracker models.TrackerItem
+				if err := json.Unmarshal(val, &tracker); err != nil {
+					return err
+				}
+
+				trackers = append(trackers, tracker)
+				return nil
+			})
+
+			if err != nil {
+				return err
+			}
+		}
+
+		return nil
+	})
+
+	if err != nil {
+		return nil, fmt.Errorf("failed to get all trackers: %v", err)
+	}
+
+	return trackers, nil
+}
+
+// DeleteTracker deletes a tracker by ID
+func (bs *BadgerStorage) DeleteTracker(id string) error {
+	return bs.db.Update(func(txn *badger.Txn) error {
+		// Get tracker first to update indexes
+		trackerKey := bs.trackerKey(id)
+		item, err := txn.Get(trackerKey)
+		if err != nil {
+			if err == badger.ErrKeyNotFound {
+				return fmt.Errorf("tracker not found")
+			}
+			return err
+		}
+
+		var tracker models.TrackerItem
+		err = item.Value(func(val []byte) error {
+			return json.Unmarshal(val, &tracker)
+		})
+		if err != nil {
+			return err
+		}
+
+		// Remove from indexes
+		if err := bs.removeFromTrackerIndexes(txn, tracker); err != nil {
+			return fmt.Errorf("failed to remove tracker from indexes: %v", err)
+		}
+
+		// Delete main record
+		if err := txn.Delete(trackerKey); err != nil {
+			return fmt.Errorf("failed to delete tracker: %v", err)
+		}
+
+		return nil
+	})
+}
+
+// UpdateTracker updates specific fields of a tracker
+func (bs *BadgerStorage) UpdateTracker(id string, fields map[string]interface{}) error {
+	return bs.db.Update(func(txn *badger.Txn) error {
+		// Get existing tracker
+		trackerKey := bs.trackerKey(id)
+		item, err := txn.Get(trackerKey)
+		if err != nil {
+			if err == badger.ErrKeyNotFound {
+				return fmt.Errorf("tracker not found")
+			}
+			return err
+		}
+
+		var tracker models.TrackerItem
+		err = item.Value(func(val []byte) error {
+			return json.Unmarshal(val, &tracker)
+		})
+		if err != nil {
+			return err
+		}
+
+		// Apply field updates
+		if err := bs.applyTrackerFieldUpdates(&tracker, fields); err != nil {
+			return err
+		}
+
+		// Update timestamp
+		tracker.LastUpdated = time.Now()
+
+		// Serialize updated tracker
+		trackerBytes, err := json.Marshal(tracker)
+		if err != nil {
+			return fmt.Errorf("failed to marshal updated tracker: %v", err)
+		}
+
+		// Save updated tracker
+		if err := txn.Set(trackerKey, trackerBytes); err != nil {
+			return fmt.Errorf("failed to save updated tracker: %v", err)
+		}
+
+		// Update indexes
+		if err := bs.updateTrackerIndexes(txn, tracker); err != nil {
+			return fmt.Errorf("failed to update tracker indexes: %v", err)
+		}
+
+		return nil
+	})
+}
+
+// SaveTrackersBatch saves multiple trackers in a single transaction
+func (bs *BadgerStorage) SaveTrackersBatch(trackers []models.TrackerItem) error {
+	return bs.db.Update(func(txn *badger.Txn) error {
+		now := time.Now()
+
+		for _, tracker := range trackers {
+			// Set timestamps
+			tracker.LastUpdated = now
+			if tracker.CreatedAt.IsZero() {
+				tracker.CreatedAt = now
+			}
+
+			// Serialize tracker
+			trackerBytes, err := json.Marshal(tracker)
+			if err != nil {
+				return fmt.Errorf("failed to marshal tracker %s: %v", tracker.ID, err)
+			}
+
+			// Save tracker
+			trackerKey := bs.trackerKey(tracker.ID)
+			if err := txn.Set(trackerKey, trackerBytes); err != nil {
+				return fmt.Errorf("failed to save tracker %s: %v", tracker.ID, err)
+			}
+
+			// Update indexes
+			if err := bs.updateTrackerIndexes(txn, tracker); err != nil {
+				return fmt.Errorf("failed to update indexes for tracker %s: %v", tracker.ID, err)
+			}
+		}
+
+		return nil
+	})
+}
+
+// UpdateTrackersBatch updates multiple trackers in a single transaction
+func (bs *BadgerStorage) UpdateTrackersBatch(updates []models.TrackerUpdate) error {
+	return bs.db.Update(func(txn *badger.Txn) error {
+		for _, update := range updates {
+			// Get existing tracker
+			trackerKey := bs.trackerKey(update.ID)
+			item, err := txn.Get(trackerKey)
+			if err != nil {
+				if err == badger.ErrKeyNotFound {
+					log.Printf("Warning: tracker %s not found during batch update", update.ID)
+					continue
+				}
+				return err
+			}
+
+			var tracker models.TrackerItem
+			err = item.Value(func(val []byte) error {
+				return json.Unmarshal(val, &tracker)
+			})
+			if err != nil {
+				return err
+			}
+
+			// Apply field updates
+			if err := bs.applyTrackerFieldUpdates(&tracker, update.Fields); err != nil {
+				return err
+			}
+
+			// Update timestamp
+			tracker.LastUpdated = time.Now()
+
+			// Serialize updated tracker
+			trackerBytes, err := json.Marshal(tracker)
+			if err != nil {
+				return fmt.Errorf("failed to marshal updated tracker %s: %v", tracker.ID, err)
+			}
+
+			// Save updated tracker
+			if err := txn.Set(trackerKey, trackerBytes); err != nil {
+				return fmt.Errorf("failed to save updated tracker %s: %v", tracker.ID, err)
+			}
+
+			// Update indexes
+			if err := bs.updateTrackerIndexes(txn, tracker); err != nil {
+				return fmt.Errorf("failed to update indexes for tracker %s: %v", tracker.ID, err)
+			}
+		}
+
+		return nil
+	})
+}
+
+// Helper methods for tracker operations
+
+// trackerKey generates a BadgerDB key for a tracker
+func (bs *BadgerStorage) trackerKey(id string) []byte {
+	return []byte("tracker:" + id)
+}
+
+// trackerIndexKey generates a BadgerDB key for tracker indexes
+func (bs *BadgerStorage) trackerIndexKey(indexName, value string) []byte {
+	return []byte("tracker_idx:" + indexName + ":" + value)
+}
+
+// updateTrackerIndexes updates secondary indexes for a tracker
+func (bs *BadgerStorage) updateTrackerIndexes(txn *badger.Txn, tracker models.TrackerItem) error {
+	// Index by URL
+	if tracker.URL != "" {
+		urlKey := bs.trackerIndexKey("url", tracker.URL)
+		if err := txn.Set(urlKey, []byte(tracker.ID)); err != nil {
+			return err
+		}
+	}
+
+	// Index by in-stock status
+	stockStatus := "false"
+	if tracker.InStock {
+		stockStatus = "true"
+	}
+	stockKey := bs.trackerIndexKey("in_stock", stockStatus)
+	if err := txn.Set(stockKey, []byte(tracker.ID)); err != nil {
+		return err
+	}
+
+	// Index by user ID (if provided)
+	if tracker.UserID != "" {
+		userKey := bs.trackerIndexKey("user_id", tracker.UserID)
+		if err := txn.Set(userKey, []byte(tracker.ID)); err != nil {
+			return err
+		}
+	}
+
+	return nil
+}
+
+// removeFromTrackerIndexes removes a tracker from secondary indexes
+func (bs *BadgerStorage) removeFromTrackerIndexes(txn *badger.Txn, tracker models.TrackerItem) error {
+	// Remove from URL index
+	if tracker.URL != "" {
+		urlKey := bs.trackerIndexKey("url", tracker.URL)
+		_ = txn.Delete(urlKey) // Ignore errors for index cleanup
+	}
+
+	// Remove from stock index
+	stockStatus := "false"
+	if tracker.InStock {
+		stockStatus = "true"
+	}
+	stockKey := bs.trackerIndexKey("in_stock", stockStatus)
+	_ = txn.Delete(stockKey)
+
+	// Remove from user index
+	if tracker.UserID != "" {
+		userKey := bs.trackerIndexKey("user_id", tracker.UserID)
+		_ = txn.Delete(userKey)
+	}
+
+	return nil
+}
+
+// matchesTrackerFilters checks if a tracker matches the given filters
+func (bs *BadgerStorage) matchesTrackerFilters(tracker models.TrackerItem, filters models.TrackerFilterOptions) bool {
+	// Filter by query (search in name and URL)
+	if filters.Query != "" {
+		query := strings.ToLower(filters.Query)
+		name := strings.ToLower(tracker.Name)
+		url := strings.ToLower(tracker.URL)
+
+		if !strings.Contains(name, query) && !strings.Contains(url, query) {
+			return false
+		}
+	}
+
+	// Filter by in-stock status
+	if filters.InStockOnly && !tracker.InStock {
+		return false
+	}
+
+	// Filter by user ID
+	if filters.UserID != "" && tracker.UserID != filters.UserID {
+		return false
+	}
+
+	return true
+}
+
+// sortTrackers sorts trackers based on the specified criteria
+func (bs *BadgerStorage) sortTrackers(trackers []models.TrackerItem, sortBy, sortOrder string) {
+	// Implementation would sort the slice based on sortBy and sortOrder
+	// For now, keeping it simple - could be enhanced with proper sorting logic
+}
+
+// applyTrackerFieldUpdates applies field updates to a tracker
+func (bs *BadgerStorage) applyTrackerFieldUpdates(tracker *models.TrackerItem, updates map[string]interface{}) error {
+	for field, value := range updates {
+		switch field {
+		case "name":
+			if v, ok := value.(string); ok {
+				tracker.Name = v
+			}
+		case "in_stock":
+			if v, ok := value.(bool); ok {
+				tracker.InStock = v
+			}
+		case "image":
+			if v, ok := value.(string); ok {
+				tracker.Image = v
+			}
+		case "price_yen":
+			if v, ok := value.(string); ok {
+				tracker.PriceYen = v
+			}
+		case "user_id":
+			if v, ok := value.(string); ok {
+				tracker.UserID = v
+			}
+		default:
+			return fmt.Errorf("unknown field: %s", field)
+		}
+	}
+	return nil
 }

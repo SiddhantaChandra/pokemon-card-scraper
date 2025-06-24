@@ -3,13 +3,28 @@ package main
 import (
 	"log"
 	"os"
+	"time"
 
 	"github.com/SiddhantaChandra/pokemon-card-scraper/internal/api"
+	"github.com/SiddhantaChandra/pokemon-card-scraper/internal/config"
+	"github.com/SiddhantaChandra/pokemon-card-scraper/internal/monitor"
+	"github.com/SiddhantaChandra/pokemon-card-scraper/internal/notifications"
 	"github.com/SiddhantaChandra/pokemon-card-scraper/internal/scraper"
 	"github.com/SiddhantaChandra/pokemon-card-scraper/internal/storage"
 	"github.com/SiddhantaChandra/pokemon-card-scraper/pkg/models"
 	"github.com/joho/godotenv"
 )
+
+// noOpNotifier is a no-operation notification service for fallback
+type noOpNotifier struct{}
+
+func (n *noOpNotifier) SendStockAlert(item models.TrackerItem, oldStatus, newStatus bool) error {
+	return nil
+}
+
+func (n *noOpNotifier) SendErrorAlert(item models.TrackerItem, error string) error {
+	return nil
+}
 
 func main() {
 	// Load environment variables
@@ -104,6 +119,93 @@ func main() {
 		}
 	})
 
+	// Initialize configuration
+	log.Println("Loading configuration...")
+	cfg, err := config.LoadConfig()
+	if err != nil {
+		log.Fatalf("Failed to load configuration: %v", err)
+	}
+
+	// Initialize Discord notifications
+	log.Println("Setting up Discord notifications...")
+	var notifier monitor.NotificationService
+	if cfg.Discord.Enabled {
+		// Convert config.DiscordConfig to notifications.DiscordConfig
+		discordConfig := &notifications.DiscordConfig{
+			WebhookURL:          cfg.Discord.WebhookURL,
+			Timeout:             cfg.Discord.Timeout,
+			RateLimit:           cfg.Discord.RateLimit,
+			MaxRetries:          cfg.Discord.MaxRetries,
+			RetryDelay:          cfg.Discord.RetryDelay,
+			Username:            cfg.Discord.Username,
+			AvatarURL:           cfg.Discord.AvatarURL,
+			Color:               0x00FF00, // Green default color
+			NotifyOnInStock:     cfg.Discord.NotifyOnInStock,
+			NotifyOnOutStock:    cfg.Discord.NotifyOnOutStock,
+			NotifyOnErrors:      cfg.Discord.NotifyOnErrors,
+			NotifyOnPriceChange: cfg.Discord.NotifyOnPriceChange,
+		}
+
+		discordNotifier, err := notifications.NewDiscordNotifier(discordConfig)
+		if err != nil {
+			log.Printf("Failed to initialize Discord notifier: %v", err)
+			// Use no-op notifier as fallback
+			notifier = &noOpNotifier{}
+		} else {
+			notifier = discordNotifier
+		}
+	} else {
+		log.Println("Discord notifications disabled")
+		notifier = &noOpNotifier{}
+	}
+
+	// Initialize WebDriver pool
+	log.Println("Setting up WebDriver pool...")
+
+	// Convert config.WebDriverConfig to monitor.WebDriverPoolConfig
+	webDriverConfig := &monitor.WebDriverPoolConfig{
+		PoolSize:   cfg.WebDriver.PoolSize,
+		Timeout:    cfg.WebDriver.Timeout,
+		UserAgent:  cfg.WebDriver.UserAgent,
+		MaxRetries: cfg.WebDriver.MaxRetries,
+	}
+
+	webDriverPool, err := monitor.NewHTTPWebDriverPool(webDriverConfig)
+	if err != nil {
+		log.Fatalf("Failed to initialize WebDriver pool: %v", err)
+	}
+	defer webDriverPool.Close()
+
+	// Initialize stock monitor
+	log.Println("Setting up stock monitor...")
+
+	// Convert config.MonitorConfig to monitor.MonitorConfig
+	monitorConfig := &monitor.MonitorConfig{
+		CheckInterval:          cfg.Monitor.CheckInterval,
+		BatchSize:              cfg.Monitor.BatchSize,
+		MaxConcurrentChecks:    cfg.Monitor.MaxConcurrentChecks,
+		MaxRetries:             cfg.Monitor.MaxRetries,
+		RetryBackoffMultiplier: cfg.Monitor.RetryBackoffMultiplier,
+		InitialRetryDelay:      cfg.Monitor.InitialRetryDelay,
+		HealthCheckInterval:    cfg.Monitor.HealthCheckInterval,
+		StaleThreshold:         cfg.Monitor.StaleThreshold,
+		NotificationEnabled:    true, // Enable notifications since we have a notifier
+		NotificationRateLimit:  5 * time.Minute,
+		WebDriverPoolSize:      3,
+		WebDriverTimeout:       30 * time.Second,
+	}
+
+	stockMonitor := monitor.NewStockMonitor(monitorConfig, cachedStorage, notifier, webDriverPool)
+	defer stockMonitor.StopMonitoring()
+
+	// Auto-start monitoring if configured
+	if cfg.Monitor.AutoStart {
+		log.Println("Auto-starting stock monitoring...")
+		if err := stockMonitor.StartMonitoring(); err != nil {
+			log.Printf("Failed to auto-start monitoring: %v", err)
+		}
+	}
+
 	// Initialize API server
 	log.Println("Setting up API server...")
 	serverConfig := api.DefaultServerConfig()
@@ -117,7 +219,7 @@ func main() {
 	}
 
 	// Create API server with parallel scraper as primary scraper
-	server, err := api.NewServer(cachedStorage, scraperInstance, serverConfig)
+	server, err := api.NewServer(cachedStorage, scraperInstance, stockMonitor, serverConfig)
 	if err != nil {
 		log.Fatalf("Failed to create API server: %v", err)
 	}
@@ -135,6 +237,16 @@ func main() {
 	log.Println("  POST /api/scrape/stop     - Stop scraping")
 	log.Println("  GET  /api/stats           - Get statistics")
 	log.Println("  GET  /api/sort-options    - Get sort options")
+	log.Println("  POST /api/tracker         - Add new tracker")
+	log.Println("  GET  /api/tracker         - List all trackers")
+	log.Println("  GET  /api/tracker/:id     - Get specific tracker")
+	log.Println("  PUT  /api/tracker/:id     - Update tracker")
+	log.Println("  DELETE /api/tracker/:id   - Delete tracker")
+	log.Println("  POST /api/tracker/bulk    - Bulk add trackers")
+	log.Println("  POST /api/monitor/start   - Start monitoring")
+	log.Println("  POST /api/monitor/stop    - Stop monitoring")
+	log.Println("  GET  /api/monitor/status  - Get monitor status")
+	log.Println("  GET  /api/monitor/stats   - Get monitor stats")
 
 	if err := server.RunWithGracefulShutdown(); err != nil {
 		log.Fatalf("Server failed: %v", err)

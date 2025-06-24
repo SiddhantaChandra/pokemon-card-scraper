@@ -159,6 +159,79 @@ export const databaseAPI = {
   },
 };
 
+// Tracker API endpoints
+export const trackerAPI = {
+  // Add new tracker
+  add: (url, name, userId = null) => {
+    return api.post('/tracker', {
+      url,
+      name,
+      user_id: userId,
+    });
+  },
+
+  // Get all trackers with optional filters
+  getAll: (filters = {}) => {
+    const params = new URLSearchParams();
+    
+    // Add filters to params
+    if (filters.q) params.append('q', filters.q);
+    if (filters.page) params.append('page', filters.page);
+    if (filters.page_size) params.append('page_size', filters.page_size);
+    if (filters.in_stock_only) params.append('in_stock_only', 'true');
+    if (filters.user_id) params.append('user_id', filters.user_id);
+    if (filters.sort_by) params.append('sort_by', filters.sort_by);
+    if (filters.sort_order) params.append('sort_order', filters.sort_order);
+    
+    return api.get(`/tracker?${params.toString()}`);
+  },
+
+  // Get specific tracker by ID
+  get: (id) => {
+    return api.get(`/tracker/${id}`);
+  },
+
+  // Update tracker
+  update: (id, data) => {
+    return api.put(`/tracker/${id}`, data);
+  },
+
+  // Delete tracker
+  delete: (id) => {
+    return api.delete(`/tracker/${id}`);
+  },
+
+  // Bulk add trackers
+  bulkAdd: (trackers) => {
+    return api.post('/tracker/bulk', {
+      trackers,
+    });
+  },
+};
+
+// Monitor API endpoints
+export const monitorAPI = {
+  // Start monitoring
+  start: () => {
+    return api.post('/monitor/start');
+  },
+
+  // Stop monitoring
+  stop: () => {
+    return api.post('/monitor/stop');
+  },
+
+  // Get monitor status
+  getStatus: () => {
+    return api.get('/monitor/status');
+  },
+
+  // Get monitoring statistics
+  getStats: () => {
+    return api.get('/monitor/stats');
+  },
+};
+
 // Health check
 export const healthAPI = {
   check: () => {

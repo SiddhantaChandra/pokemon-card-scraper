@@ -10,6 +10,7 @@ import (
 	"syscall"
 	"time"
 
+	"github.com/SiddhantaChandra/pokemon-card-scraper/internal/monitor"
 	"github.com/SiddhantaChandra/pokemon-card-scraper/internal/scraper"
 	"github.com/SiddhantaChandra/pokemon-card-scraper/internal/search"
 	"github.com/SiddhantaChandra/pokemon-card-scraper/internal/storage"
@@ -23,6 +24,7 @@ type Server struct {
 	storage      storage.Storage
 	scraper      scraper.ScraperInterface
 	searchEngine *search.SearchEngine
+	monitor      *monitor.StockMonitor
 	handlers     *Handlers
 	config       *ServerConfig
 }
@@ -48,7 +50,7 @@ func DefaultServerConfig() *ServerConfig {
 }
 
 // NewServer creates a new API server instance
-func NewServer(storage storage.Storage, scraperInstance scraper.ScraperInterface, config *ServerConfig) (*Server, error) {
+func NewServer(storage storage.Storage, scraperInstance scraper.ScraperInterface, monitor *monitor.StockMonitor, config *ServerConfig) (*Server, error) {
 	if config == nil {
 		config = DefaultServerConfig()
 	}
@@ -72,11 +74,12 @@ func NewServer(storage storage.Storage, scraperInstance scraper.ScraperInterface
 		storage:      storage,
 		scraper:      scraperInstance,
 		searchEngine: searchEngine,
+		monitor:      monitor,
 		config:       config,
 	}
 
 	// Initialize handlers
-	server.handlers = NewHandlers(storage, scraperInstance, searchEngine)
+	server.handlers = NewHandlers(storage, scraperInstance, searchEngine, monitor)
 
 	// Setup middleware
 	server.setupMiddleware()
@@ -159,6 +162,26 @@ func (s *Server) setupRoutes() {
 			scrape.POST("/pause", s.handlers.PauseScrape)     // POST /api/scrape/pause
 			scrape.POST("/resume", s.handlers.ResumeScrape)   // POST /api/scrape/resume
 			scrape.POST("/restart", s.handlers.RestartScrape) // POST /api/scrape/restart
+		}
+
+		// Tracker endpoints
+		trackers := api.Group("/tracker")
+		{
+			trackers.POST("", s.handlers.AddTracker)           // POST /api/tracker
+			trackers.GET("", s.handlers.GetTrackers)           // GET /api/tracker
+			trackers.GET("/:id", s.handlers.GetTracker)        // GET /api/tracker/:id
+			trackers.PUT("/:id", s.handlers.UpdateTracker)     // PUT /api/tracker/:id
+			trackers.DELETE("/:id", s.handlers.DeleteTracker)  // DELETE /api/tracker/:id
+			trackers.POST("/bulk", s.handlers.BulkAddTrackers) // POST /api/tracker/bulk
+		}
+
+		// Monitor control endpoints
+		monitor := api.Group("/monitor")
+		{
+			monitor.POST("/start", s.handlers.StartMonitoring)  // POST /api/monitor/start
+			monitor.POST("/stop", s.handlers.StopMonitoring)    // POST /api/monitor/stop
+			monitor.GET("/status", s.handlers.GetMonitorStatus) // GET /api/monitor/status
+			monitor.GET("/stats", s.handlers.GetMonitorStats)   // GET /api/monitor/stats
 		}
 
 		// Statistics endpoints
