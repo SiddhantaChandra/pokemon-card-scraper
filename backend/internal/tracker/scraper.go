@@ -3,7 +3,6 @@ package tracker
 import (
 	"context"
 	"fmt"
-	"log"
 	"regexp"
 	"strconv"
 	"strings"
@@ -134,7 +133,6 @@ func (s *ChromeDPScraper) scrapeJapanesePokemonSite(ctx context.Context, url str
 			`, &addButtons).Do(ctx)
 
 			if err != nil {
-				log.Printf("Warning: Could not find add buttons: %v", err)
 				// Try alternative selectors
 				var hasAddButton bool
 				chromedp.Evaluate(`

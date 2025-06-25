@@ -98,22 +98,73 @@ type DiscordFooter struct {
 	IconURL string `json:"icon_url,omitempty"`
 }
 
-// SendStockAlert sends a stock change notification to Discord
+// SendStockAlert sends a stock alert notification
 func (dn *DiscordNotifier) SendStockAlert(tracker models.TrackerEntry, statusChanged bool) error {
-	if dn.webhookURL == "" {
-		return fmt.Errorf("Discord webhook URL not configured")
+	// Create embed based on stock status
+	var embed DiscordEmbed
+	if tracker.InStock {
+		embed = DiscordEmbed{
+			Title:       "🟢 Item Back in Stock!",
+			Description: fmt.Sprintf("**%s** is now available", tracker.Name),
+			Color:       3066993, // Green
+			URL:         tracker.URL,
+			Fields: []DiscordField{
+				{
+					Name:   "Price",
+					Value:  tracker.FormattedPrice(),
+					Inline: true,
+				},
+				{
+					Name:   "Last Checked",
+					Value:  tracker.TimeSinceLastCheck(),
+					Inline: true,
+				},
+			},
+			Footer: &DiscordFooter{
+				Text: "Pokemon Card Tracker",
+			},
+			Timestamp: time.Now().Format(time.RFC3339),
+		}
+	} else {
+		embed = DiscordEmbed{
+			Title:       "🔴 Item Out of Stock",
+			Description: fmt.Sprintf("**%s** is no longer available", tracker.Name),
+			Color:       15158332, // Red
+			URL:         tracker.URL,
+			Fields: []DiscordField{
+				{
+					Name:   "Last Price",
+					Value:  tracker.FormattedPrice(),
+					Inline: true,
+				},
+				{
+					Name:   "Last Checked",
+					Value:  tracker.TimeSinceLastCheck(),
+					Inline: true,
+				},
+			},
+			Footer: &DiscordFooter{
+				Text: "Pokemon Card Tracker",
+			},
+			Timestamp: time.Now().Format(time.RFC3339),
+		}
 	}
 
-	// Create the embed message
-	embed := dn.createStockEmbed(tracker, statusChanged)
+	// Add image if available
+	if tracker.ImageURL != "" {
+		embed.Image = &DiscordImage{URL: tracker.ImageURL}
+	}
 
 	message := DiscordMessage{
-		Username:  dn.username,
-		AvatarURL: dn.avatarURL,
-		Embeds:    []DiscordEmbed{embed},
+		Embeds: []DiscordEmbed{embed},
 	}
 
-	return dn.sendMessage(message)
+	// Send to Discord
+	if err := dn.sendMessage(message); err != nil {
+		return fmt.Errorf("failed to send Discord notification: %v", err)
+	}
+
+	return nil
 }
 
 // SendErrorAlert sends an error notification to Discord
@@ -262,23 +313,23 @@ func (dn *DiscordNotifier) Test() error {
 	return dn.SendStockAlert(testTracker, true)
 }
 
-// NoOpNotifier is a notification service that does nothing (for testing/disabled notifications)
+// NoOpNotifier implements NotificationService with no-op behavior for testing/development
 type NoOpNotifier struct{}
 
-// NewNoOpNotifier creates a new no-op notification service
+// NewNoOpNotifier creates a new no-op notifier
 func NewNoOpNotifier() *NoOpNotifier {
 	return &NoOpNotifier{}
 }
 
-// SendStockAlert does nothing (no-op implementation)
+// SendStockAlert does nothing but logs the action
 func (n *NoOpNotifier) SendStockAlert(tracker models.TrackerEntry, statusChanged bool) error {
-	log.Printf("NoOp notification: Stock alert for %s (in stock: %v)", tracker.Name, tracker.InStock)
+	// Silent no-op
 	return nil
 }
 
-// SendErrorAlert does nothing (no-op implementation)
+// SendErrorAlert does nothing but logs the action
 func (n *NoOpNotifier) SendErrorAlert(message string, err error) error {
-	log.Printf("NoOp notification: Error alert - %s: %v", message, err)
+	// Silent no-op
 	return nil
 }
 

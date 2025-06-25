@@ -203,6 +203,11 @@ export const trackerAPI = {
     return api.post('/tracker/check-now');
   },
 
+  // Test Discord notification
+  testNotification: () => {
+    return api.post('/tracker/test-notification');
+  },
+
   // Get tracker system status
   getStatus: () => {
     return api.get('/tracker/status');
@@ -334,7 +339,8 @@ const apiInterface = {
   // Get tracker stats (simplified interface)  
   getTrackerStats: async () => {
     const response = await statsAPI.getStats();
-    return response.data?.tracker_stats || {};
+    const trackerStats = response.data?.tracker_stats || {};
+    return trackerStats;
   },
 
   // Include all other APIs
@@ -380,7 +386,8 @@ export const unifiedAPI = {
 
   getTrackerStats: async () => {
     const response = await statsAPI.getStats();
-    return response.data?.tracker_stats || {};
+    const trackerStats = response.data?.tracker_stats || {};
+    return trackerStats;
   },
 
   // Include raw APIs for other functionality

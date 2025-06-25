@@ -12,6 +12,7 @@ import (
 	"github.com/SiddhantaChandra/pokemon-card-scraper/internal/scraper"
 	"github.com/SiddhantaChandra/pokemon-card-scraper/internal/search"
 	"github.com/SiddhantaChandra/pokemon-card-scraper/internal/storage"
+	"github.com/SiddhantaChandra/pokemon-card-scraper/pkg/models"
 	"github.com/gin-gonic/gin"
 )
 
@@ -349,7 +350,17 @@ func (h *Handlers) GetStats(c *gin.Context) {
 	// Get scraper status
 	scraperStatus := h.scraper.GetStatus()
 
-	c.JSON(http.StatusOK, gin.H{
+	// Try to get tracker stats if storage supports it
+	var trackerStats interface{}
+	if trackerStorage, ok := h.storage.(interface {
+		GetTrackerStats() (*models.TrackerStats, error)
+	}); ok {
+		if stats, err := trackerStorage.GetTrackerStats(); err == nil {
+			trackerStats = stats
+		}
+	}
+
+	response := gin.H{
 		"database": searchStats,
 		"scraper": gin.H{
 			"running":       h.scraper.IsRunning(),
@@ -357,7 +368,14 @@ func (h *Handlers) GetStats(c *gin.Context) {
 			"items_scraped": scraperStatus.ItemsScraped,
 		},
 		"generated_at": time.Now().UTC(),
-	})
+	}
+
+	// Add tracker stats if available
+	if trackerStats != nil {
+		response["tracker_stats"] = trackerStats
+	}
+
+	c.JSON(http.StatusOK, response)
 }
 
 // GetSortOptions handles GET /api/sort-options

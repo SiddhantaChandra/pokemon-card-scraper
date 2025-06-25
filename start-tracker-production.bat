@@ -15,7 +15,7 @@ set TRACKER_SCRAPER_TIMEOUT=60s
 set TRACKER_USER_AGENT=Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/91.0.4472.124 Safari/537.36
 
 REM Discord webhook (uncomment and set your webhook URL)
-REM set DISCORD_WEBHOOK_URL=https://discord.com/api/webhooks/YOUR_WEBHOOK_URL_HERE
+set DISCORD_WEBHOOK_URL=https://discord.com/api/webhooks/1386967025133555783/VnEE5VJaBStnEQKElqk3E1qwxh7PKGAdrtRTD5WkBt268sADrsBFtIazWBCTRPbEAfzt
 set DISCORD_USERNAME=Pokemon Card Tracker
 set DISCORD_TIMEOUT=15s
 

@@ -99,8 +99,6 @@ func (tw *TrackerWorker) Start() error {
 		return fmt.Errorf("worker is already running")
 	}
 
-	log.Printf("Starting tracker worker with scan interval: %v", tw.config.ScanInterval)
-
 	tw.isRunning = true
 	tw.ticker = time.NewTicker(tw.config.ScanInterval)
 
@@ -124,8 +122,6 @@ func (tw *TrackerWorker) Stop() error {
 		return fmt.Errorf("worker is not running")
 	}
 
-	log.Println("Stopping tracker worker...")
-
 	tw.isRunning = false
 
 	if tw.ticker != nil {
@@ -138,7 +134,6 @@ func (tw *TrackerWorker) Stop() error {
 	// Reset stop channel for potential restart
 	tw.stopChan = make(chan struct{})
 
-	log.Println("Tracker worker stopped")
 	return nil
 }
 
@@ -158,8 +153,6 @@ func (tw *TrackerWorker) GetStats() WorkerStats {
 
 // CheckNow performs an immediate check of all active trackers
 func (tw *TrackerWorker) CheckNow() (*models.BatchCheckResult, error) {
-	log.Println("Manual tracker check initiated")
-
 	// Get all active trackers
 	trackers, err := tw.storage.GetActiveTrackers()
 	if err != nil {
@@ -185,7 +178,6 @@ func (tw *TrackerWorker) workerLoop() {
 	for {
 		select {
 		case <-tw.stopChan:
-			log.Println("Worker loop stopped")
 			return
 		case <-tw.ticker.C:
 			tw.performScheduledScan()
@@ -195,8 +187,6 @@ func (tw *TrackerWorker) workerLoop() {
 
 // performScheduledScan performs a scheduled scan of all active trackers
 func (tw *TrackerWorker) performScheduledScan() {
-	log.Println("Starting scheduled tracker scan")
-
 	start := time.Now()
 
 	// Update stats
@@ -209,31 +199,23 @@ func (tw *TrackerWorker) performScheduledScan() {
 	// Get active trackers
 	trackers, err := tw.storage.GetActiveTrackers()
 	if err != nil {
-		log.Printf("Failed to get active trackers: %v", err)
 		tw.updateErrorStats()
 		return
 	}
 
 	if len(trackers) == 0 {
-		log.Println("No active trackers to scan")
 		return
 	}
-
-	log.Printf("Scanning %d active trackers", len(trackers))
 
 	// Check trackers
 	result, err := tw.checkTrackers(trackers)
 	if err != nil {
-		log.Printf("Failed to check trackers: %v", err)
 		tw.updateErrorStats()
 		return
 	}
 
 	// Update statistics
 	tw.updateScanStats(result, time.Since(start))
-
-	log.Printf("Scheduled scan completed: %d successful, %d failed",
-		result.SuccessfulChecks, result.FailedChecks)
 }
 
 // checkTrackers checks a list of trackers and returns results
@@ -357,7 +339,6 @@ func (tw *TrackerWorker) processTrackerUpdate(tracker models.TrackerEntry, resul
 		updatedTracker.ImageURL = result.ImageURL
 
 		if err := tw.notifier.SendStockAlert(updatedTracker, stockChanged); err != nil {
-			log.Printf("Failed to send notification for tracker %s: %v", tracker.ID, err)
 			// Don't return error as this shouldn't fail the entire update
 		}
 	}

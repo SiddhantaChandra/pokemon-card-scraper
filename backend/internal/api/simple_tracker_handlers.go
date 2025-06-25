@@ -4,12 +4,14 @@ import (
 	"context"
 	"log"
 	"net/http"
+	"os"
 	"regexp"
 	"strconv"
 	"strings"
 	"time"
 
 	"github.com/SiddhantaChandra/pokemon-card-scraper/internal/storage"
+	"github.com/SiddhantaChandra/pokemon-card-scraper/internal/tracker"
 	"github.com/SiddhantaChandra/pokemon-card-scraper/pkg/models"
 	"github.com/chromedp/chromedp"
 	"github.com/gin-gonic/gin"
@@ -114,7 +116,6 @@ func NewSimplifiedTrackerHandlers(st interface{}) *SimplifiedTrackerHandlers {
 
 // startBackgroundWorker runs periodic checks every 30 seconds
 func (sth *SimplifiedTrackerHandlers) startBackgroundWorker() {
-	log.Println("Starting simplified tracker background worker (30 second intervals)")
 	sth.isWorkerRunning = true
 
 	ticker := time.NewTicker(30 * time.Second)
@@ -128,15 +129,12 @@ func (sth *SimplifiedTrackerHandlers) startBackgroundWorker() {
 			}
 			trackers, err := sth.storage.GetActiveTrackers()
 			if err != nil {
-				log.Printf("Error getting active trackers: %v", err)
 				continue
 			}
 			if len(trackers) > 0 {
-				log.Printf("Background worker: checking %d trackers", len(trackers))
 				sth.performBackgroundCheck()
 			}
 		case <-sth.workerStopChan:
-			log.Println("Background worker stopped")
 			sth.isWorkerRunning = false
 			return
 		}
@@ -146,7 +144,6 @@ func (sth *SimplifiedTrackerHandlers) startBackgroundWorker() {
 // performBackgroundCheck checks all trackers in background
 func (sth *SimplifiedTrackerHandlers) performBackgroundCheck() {
 	if sth.storage == nil {
-		log.Println("Storage not available for background check")
 		return
 	}
 
@@ -155,23 +152,20 @@ func (sth *SimplifiedTrackerHandlers) performBackgroundCheck() {
 
 	trackers, err := sth.storage.GetActiveTrackers()
 	if err != nil {
-		log.Printf("Error getting active trackers: %v", err)
 		return
 	}
 
 	for _, tracker := range trackers {
 		simple := convertToSimpleResponse(tracker)
+
 		if sth.checkTrackerURL(&simple) {
 			successCount++
-			// Update the tracker in storage with new data
-			updatedTracker := convertFromSimpleResponse(simple)
-			if err := sth.storage.UpdateTracker(updatedTracker); err != nil {
-				log.Printf("Error updating tracker %s: %v", tracker.ID, err)
+			// Update the tracker in storage with new data using UpdateTrackerStatus
+			if err := sth.storage.UpdateTrackerStatus(tracker.ID, simple.InStock, simple.Price, simple.ImageURL); err != nil {
+				// Silent fail - don't spam logs
 			}
 		}
 	}
-
-	log.Printf("Background check completed: %d/%d trackers checked successfully", successCount, len(trackers))
 }
 
 // AddTracker handles POST /api/tracker/add
@@ -393,15 +387,11 @@ func (sth *SimplifiedTrackerHandlers) CheckNow(c *gin.Context) {
 
 // checkTrackerURL performs actual web scraping to check a tracker URL using ChromeDP
 func (sth *SimplifiedTrackerHandlers) checkTrackerURL(tracker *SimpleTrackerResponse) bool {
-	log.Printf("DEBUG: checkTrackerURL called with URL: %s", tracker.URL)
-
 	defer func() {
 		if r := recover(); r != nil {
-			log.Printf("Panic while checking URL %s: %v", tracker.URL, r)
+			// Silent recovery - don't spam logs
 		}
 	}()
-
-	log.Printf("Starting ChromeDP check for URL: %s", tracker.URL)
 
 	// Create context with Docker-friendly Chrome options
 	opts := append(chromedp.DefaultExecAllocatorOptions[:],
@@ -412,13 +402,22 @@ func (sth *SimplifiedTrackerHandlers) checkTrackerURL(tracker *SimpleTrackerResp
 		chromedp.Flag("no-sandbox", true),
 		chromedp.Flag("disable-web-security", true),
 		chromedp.Flag("disable-features", "VizDisplayCompositor"),
+		chromedp.Flag("disable-logging", true),
+		chromedp.Flag("silent", true),
+		chromedp.Flag("disable-background-timer-throttling", true),
+		chromedp.Flag("disable-backgrounding-occluded-windows", true),
+		chromedp.Flag("disable-renderer-backgrounding", true),
+		chromedp.Flag("log-level", "3"), // Only show fatal errors
+		chromedp.Flag("enable-logging", false),
+		chromedp.Flag("disable-default-apps", true),
+		chromedp.Flag("disable-background-networking", true),
 		chromedp.UserAgent("Mozilla/5.0 (X11; Linux x86_64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/91.0.4472.124 Safari/537.36"),
 	)
 
 	allocCtx, cancel := chromedp.NewExecAllocator(context.Background(), opts...)
 	defer cancel()
 
-	ctx, cancel := chromedp.NewContext(allocCtx)
+	ctx, cancel := chromedp.NewContext(allocCtx, chromedp.WithLogf(func(string, ...interface{}) {}))
 	defer cancel()
 
 	// Set longer timeout for Japanese sites
@@ -435,8 +434,6 @@ func (sth *SimplifiedTrackerHandlers) checkTrackerURL(tracker *SimpleTrackerResp
 	var imageSrc string
 
 	// Run ChromeDP tasks - based on real HTML structure from torecacamp-pokemon.com
-	log.Printf("Starting navigation to: %s", tracker.URL)
-
 	err := chromedp.Run(ctx,
 		// Navigate to the URL
 		chromedp.Navigate(tracker.URL),
@@ -447,9 +444,30 @@ func (sth *SimplifiedTrackerHandlers) checkTrackerURL(tracker *SimpleTrackerResp
 		// Extract price text - look for "販売価格¥" pattern
 		chromedp.Evaluate(`
 			(() => {
-				// Look for price pattern in page text
-				const priceMatch = document.body.innerText.match(/販売価格¥([0-9,]+)/);
-				return priceMatch ? priceMatch[0] : '';
+				// Method 1: Look for specific "販売価格¥" pattern
+				const priceMatch1 = document.body.innerText.match(/販売価格¥([0-9,]+)/);
+				if (priceMatch1) return priceMatch1[0];
+				
+				// Method 2: Look for any ¥ symbol followed by numbers
+				const priceMatch2 = document.body.innerText.match(/¥([0-9,]+)/);
+				if (priceMatch2) return priceMatch2[0];
+				
+				// Method 3: Look for price in specific elements
+				const priceElements = document.querySelectorAll('.price, .product-price, [data-price]');
+				for (const el of priceElements) {
+					if (el.textContent && el.textContent.includes('¥')) {
+						return el.textContent.trim();
+					}
+				}
+				
+				// Method 4: Look for any text containing yen symbol and numbers
+				const textContent = document.body.innerText;
+				const allPriceMatches = textContent.match(/[¥￥][0-9,]+/g);
+				if (allPriceMatches && allPriceMatches.length > 0) {
+					return allPriceMatches[0];
+				}
+				
+				return '';
 			})()
 		`, &priceText),
 
@@ -512,33 +530,26 @@ func (sth *SimplifiedTrackerHandlers) checkTrackerURL(tracker *SimpleTrackerResp
 	)
 
 	if err != nil {
-		log.Printf("ChromeDP error for %s: %v", tracker.URL, err)
 		return false
 	}
 
 	// Process stock text
 	if stockText == "OUT_OF_STOCK" {
 		isInStock = false
-		log.Printf("Stock: OUT OF STOCK")
 	} else if strings.HasPrefix(stockText, "IN_STOCK_") {
 		// Extract quantity from "IN_STOCK_7" format
 		stockNumStr := strings.TrimPrefix(stockText, "IN_STOCK_")
 		if stockNum, err := strconv.Atoi(stockNumStr); err == nil && stockNum > 0 {
 			isInStock = true
-			log.Printf("Stock: IN STOCK (%d items available)", stockNum)
 		} else {
 			isInStock = false
-			log.Printf("Stock: OUT OF STOCK (0 items)")
 		}
 	} else if stockText == "HAS_STOCK_TEXT" {
 		isInStock = true
-		log.Printf("Stock: IN STOCK (found stock text)")
 	} else if stockText == "CAN_ADD_TO_CART" {
 		isInStock = true
-		log.Printf("Stock: IN STOCK (add to cart available)")
 	} else {
 		isInStock = false
-		log.Printf("Stock: UNKNOWN/OUT OF STOCK (no stock indicators found)")
 	}
 
 	// Process image URL
@@ -559,17 +570,30 @@ func (sth *SimplifiedTrackerHandlers) checkTrackerURL(tracker *SimpleTrackerResp
 		}
 	}
 
-	// Process price - extract from "販売価格¥3,280" format
+	// Process price - extract from various Japanese price formats
 	if priceText != "" {
-		// Use regex to extract price from Japanese format
-		re := regexp.MustCompile(`販売価格¥([0-9,]+)`)
-		matches := re.FindStringSubmatch(priceText)
+		// Try multiple regex patterns for different price formats
+		patterns := []string{
+			`販売価格¥([0-9,]+)`, // "販売価格¥3,280"
+			`¥([0-9,]+)`,     // "¥3,280"
+			`￥([0-9,]+)`,     // "￥3,280" (full-width yen)
+			`([0-9,]+)円`,     // "3,280円"
+		}
 
-		if len(matches) > 1 {
-			cleanedPrice := strings.ReplaceAll(matches[1], ",", "")
+		var extractedPrice string
+		for _, pattern := range patterns {
+			re := regexp.MustCompile(pattern)
+			matches := re.FindStringSubmatch(priceText)
+			if len(matches) > 1 {
+				extractedPrice = matches[1]
+				break
+			}
+		}
+
+		if extractedPrice != "" {
+			cleanedPrice := strings.ReplaceAll(extractedPrice, ",", "")
 			if price, err := strconv.ParseFloat(cleanedPrice, 64); err == nil {
 				foundPrice = price
-				log.Printf("Parsed price: ¥%.2f", price)
 			}
 		}
 	}
@@ -583,7 +607,6 @@ func (sth *SimplifiedTrackerHandlers) checkTrackerURL(tracker *SimpleTrackerResp
 		tracker.ImageURL = imageURL
 	}
 
-	log.Printf("Final result for %s: InStock=%t, Price=%.2f, Image=%s", tracker.ID, tracker.InStock, tracker.Price, imageURL)
 	return true
 }
 
@@ -624,6 +647,98 @@ func (sth *SimplifiedTrackerHandlers) GetTrackerOptions(c *gin.Context) {
 			"pokemon-card.com",
 			"Generic sites",
 		},
+	})
+}
+
+// TestNotification handles POST /api/tracker/test-notification
+func (sth *SimplifiedTrackerHandlers) TestNotification(c *gin.Context) {
+	// Check if storage is available
+	if sth.storage == nil {
+		c.JSON(http.StatusServiceUnavailable, gin.H{
+			"error":   "Tracker storage not available",
+			"message": "Persistent tracker storage is not properly configured",
+		})
+		return
+	}
+
+	// Get all active trackers
+	trackers, err := sth.storage.GetActiveTrackers()
+	if err != nil {
+		c.JSON(http.StatusInternalServerError, gin.H{
+			"error":   "Failed to get trackers",
+			"message": err.Error(),
+		})
+		return
+	}
+
+	// Filter for in-stock trackers
+	var inStockTrackers []models.TrackerEntry
+	for _, tracker := range trackers {
+		if tracker.InStock {
+			inStockTrackers = append(inStockTrackers, tracker)
+		}
+	}
+
+	// Check if Discord webhook is configured
+	webhookURL := os.Getenv("DISCORD_WEBHOOK_URL")
+	if webhookURL == "" {
+		c.JSON(http.StatusBadRequest, gin.H{
+			"error":   "Discord webhook not configured",
+			"message": "DISCORD_WEBHOOK_URL environment variable is not set",
+		})
+		return
+	}
+
+	// Create Discord notifier
+	discordConfig := &tracker.DiscordConfig{
+		WebhookURL: webhookURL,
+		Username:   "Pokemon Card Tracker",
+		Timeout:    15 * time.Second,
+	}
+
+	notifier := tracker.NewDiscordNotifier(discordConfig)
+
+	// Send notifications for all in-stock cards
+	sentCount := 0
+	failedCount := 0
+
+	if len(inStockTrackers) == 0 {
+		// Send a test notification if no cards are in stock
+		testTracker := models.TrackerEntry{
+			ID:       "test-notification",
+			Name:     "Test - No cards currently in stock",
+			URL:      "https://torecacamp-pokemon.com/test",
+			InStock:  true,
+			Price:    0.0,
+			ImageURL: "",
+		}
+
+		if err := notifier.SendStockAlert(testTracker, true); err != nil {
+			c.JSON(http.StatusInternalServerError, gin.H{
+				"error":   "Failed to send test notification",
+				"message": err.Error(),
+			})
+			return
+		}
+		sentCount = 1
+	} else {
+		// Send notifications for each in-stock card
+		for _, tracker := range inStockTrackers {
+			if err := notifier.SendStockAlert(tracker, true); err != nil {
+				log.Printf("Failed to send notification for tracker %s: %v", tracker.ID, err)
+				failedCount++
+			} else {
+				sentCount++
+			}
+		}
+	}
+
+	c.JSON(http.StatusOK, gin.H{
+		"message":              "Discord test notifications completed",
+		"in_stock_cards":       len(inStockTrackers),
+		"notifications_sent":   sentCount,
+		"notifications_failed": failedCount,
+		"webhook":              "***configured***", // Don't expose the actual URL
 	})
 }
 

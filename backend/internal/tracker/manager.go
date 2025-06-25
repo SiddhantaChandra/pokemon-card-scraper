@@ -82,28 +82,21 @@ func (tm *TrackerManager) Start() error {
 	defer tm.mu.Unlock()
 
 	if !tm.config.Enabled {
-		log.Println("Tracker system is disabled in configuration")
-		return nil
+		return fmt.Errorf("tracker system is disabled")
 	}
 
 	if tm.isRunning {
-		return fmt.Errorf("tracker manager is already running")
+		return fmt.Errorf("tracker system is already running")
 	}
 
-	if tm.worker == nil {
-		return fmt.Errorf("tracker worker not initialized")
-	}
-
-	log.Println("Starting tracker system...")
-
-	// Start the worker
-	if err := tm.worker.Start(); err != nil {
-		return fmt.Errorf("failed to start tracker worker: %v", err)
+	// Start the worker if configured
+	if tm.worker != nil {
+		if err := tm.worker.Start(); err != nil {
+			return fmt.Errorf("failed to start tracker worker: %v", err)
+		}
 	}
 
 	tm.isRunning = true
-	log.Println("Tracker system started successfully")
-
 	return nil
 }
 
@@ -113,10 +106,8 @@ func (tm *TrackerManager) Stop() error {
 	defer tm.mu.Unlock()
 
 	if !tm.isRunning {
-		return fmt.Errorf("tracker manager is not running")
+		return nil
 	}
-
-	log.Println("Stopping tracker system...")
 
 	// Stop the worker
 	if tm.worker != nil {
@@ -133,8 +124,6 @@ func (tm *TrackerManager) Stop() error {
 	}
 
 	tm.isRunning = false
-	log.Println("Tracker system stopped")
-
 	return nil
 }
 
@@ -185,7 +174,7 @@ func (tm *TrackerManager) CheckNow() (*models.BatchCheckResult, error) {
 	return tm.worker.CheckNow()
 }
 
-// AddTracker adds a new tracker
+// AddTracker adds a new tracker to the system
 func (tm *TrackerManager) AddTracker(url, name string) (*models.TrackerEntry, error) {
 	if !tm.config.Enabled {
 		return nil, fmt.Errorf("tracker system is disabled")
@@ -213,7 +202,6 @@ func (tm *TrackerManager) AddTracker(url, name string) (*models.TrackerEntry, er
 		return nil, fmt.Errorf("failed to save tracker: %v", err)
 	}
 
-	log.Printf("Added new tracker: %s (%s)", tracker.Name, tracker.URL)
 	return tracker, nil
 }
 
@@ -266,7 +254,6 @@ func (tm *TrackerManager) UpdateTracker(id string, updates map[string]interface{
 		return nil, fmt.Errorf("failed to update tracker: %v", err)
 	}
 
-	log.Printf("Updated tracker: %s", tracker.Name)
 	return tracker, nil
 }
 
@@ -278,18 +265,11 @@ func (tm *TrackerManager) DeleteTracker(id string) error {
 
 	storage := tm.getStorage()
 
-	// Get tracker name for logging
-	tracker, err := storage.GetTracker(id)
-	if err != nil {
-		return fmt.Errorf("tracker not found: %v", err)
-	}
-
 	// Delete tracker
 	if err := storage.DeleteTracker(id); err != nil {
 		return fmt.Errorf("failed to delete tracker: %v", err)
 	}
 
-	log.Printf("Deleted tracker: %s", tracker.Name)
 	return nil
 }
 

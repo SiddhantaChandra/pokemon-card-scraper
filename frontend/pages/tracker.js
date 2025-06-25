@@ -8,6 +8,7 @@ import TrackerList from '../components/TrackerList';
 import TrackerStats from '../components/TrackerStats';
 import { useTracker } from '../hooks/useTracker';
 import { useCards } from '../hooks/useCards';
+import { trackerAPI } from '../lib/api';
 
 export default function Tracker() {
   const { isDarkMode, toggleDarkMode } = useDarkMode();
@@ -26,6 +27,24 @@ export default function Tracker() {
   const { totalItems, refresh, isValidating } = useCards('', {});
 
   const [showAddForm, setShowAddForm] = useState(true);
+  const [testingNotification, setTestingNotification] = useState(false);
+
+  const handleTestNotification = async () => {
+    setTestingNotification(true);
+    try {
+      const response = await trackerAPI.testNotification();
+      if (response.success) {
+        alert('Discord notification test completed! Check your Discord channel.');
+      } else {
+        alert('Discord notification test failed: ' + (response.message || 'Unknown error'));
+      }
+    } catch (error) {
+      console.error('Test notification error:', error);
+      alert('Failed to send test notification: ' + error.message);
+    } finally {
+      setTestingNotification(false);
+    }
+  };
 
   return (
     <>
@@ -154,6 +173,14 @@ export default function Tracker() {
                 className="px-4 py-2 bg-gray-600 hover:bg-gray-700 text-white rounded-lg font-medium transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
               >
                 {loading ? 'Refreshing...' : 'Refresh'}
+              </button>
+
+              <button
+                onClick={handleTestNotification}
+                disabled={testingNotification}
+                className="px-4 py-2 bg-purple-600 hover:bg-purple-700 text-white rounded-lg font-medium transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
+              >
+                {testingNotification ? 'Testing...' : 'Test Discord'}
               </button>
             </div>
 

@@ -30,28 +30,23 @@ func DefaultTrackerConfig() *TrackerConfig {
 
 // LoadTrackerConfigFromEnv loads tracker configuration from environment variables
 func LoadTrackerConfigFromEnv() *TrackerConfig {
-	config := DefaultTrackerConfig()
+	config := ProductionDefaults()
 
-	// Tracker enabled/disabled
+	// Load basic settings
 	if enabled := os.Getenv("TRACKER_ENABLED"); enabled != "" {
 		config.Enabled = enabled == "true"
 	}
 
-	// Development mode
-	if dev := os.Getenv("TRACKER_DEVELOPMENT"); dev != "" {
-		config.Development = dev == "true"
-	}
-
-	// Worker configuration
-	if scanInterval := os.Getenv("TRACKER_SCAN_INTERVAL"); scanInterval != "" {
-		if duration, err := time.ParseDuration(scanInterval); err == nil {
+	// Load worker settings
+	if interval := os.Getenv("TRACKER_SCAN_INTERVAL"); interval != "" {
+		if duration, err := time.ParseDuration(interval); err == nil {
 			config.Worker.ScanInterval = duration
 		}
 	}
 
-	if maxWorkers := os.Getenv("TRACKER_MAX_WORKERS"); maxWorkers != "" {
-		if workers, err := strconv.Atoi(maxWorkers); err == nil {
-			config.Worker.MaxWorkers = workers
+	if workers := os.Getenv("TRACKER_MAX_WORKERS"); workers != "" {
+		if maxWorkers, err := strconv.Atoi(workers); err == nil && maxWorkers > 0 {
+			config.Worker.MaxWorkers = maxWorkers
 		}
 	}
 
@@ -61,42 +56,12 @@ func LoadTrackerConfigFromEnv() *TrackerConfig {
 		}
 	}
 
-	if enableNotifications := os.Getenv("TRACKER_ENABLE_NOTIFICATIONS"); enableNotifications != "" {
-		config.Worker.EnableNotifications = enableNotifications == "true"
-	}
-
-	// Scraper configuration
-	if userAgent := os.Getenv("TRACKER_USER_AGENT"); userAgent != "" {
-		config.Scraper.UserAgent = userAgent
-	}
-
-	if headless := os.Getenv("TRACKER_HEADLESS"); headless != "" {
-		config.Scraper.Headless = headless == "true"
-	}
-
-	if scraperTimeout := os.Getenv("TRACKER_SCRAPER_TIMEOUT"); scraperTimeout != "" {
-		if duration, err := time.ParseDuration(scraperTimeout); err == nil {
-			config.Scraper.Timeout = duration
-		}
-	}
-
-	// Discord configuration
+	// Load notification settings
 	if webhookURL := os.Getenv("DISCORD_WEBHOOK_URL"); webhookURL != "" {
 		config.Discord.WebhookURL = webhookURL
-	}
-
-	if username := os.Getenv("DISCORD_USERNAME"); username != "" {
-		config.Discord.Username = username
-	}
-
-	if avatarURL := os.Getenv("DISCORD_AVATAR_URL"); avatarURL != "" {
-		config.Discord.AvatarURL = avatarURL
-	}
-
-	if discordTimeout := os.Getenv("DISCORD_TIMEOUT"); discordTimeout != "" {
-		if duration, err := time.ParseDuration(discordTimeout); err == nil {
-			config.Discord.Timeout = duration
-		}
+		config.Worker.EnableNotifications = true
+	} else {
+		config.Worker.EnableNotifications = false
 	}
 
 	return config

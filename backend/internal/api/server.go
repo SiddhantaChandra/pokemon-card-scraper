@@ -200,13 +200,14 @@ func (s *Server) setupRoutes() {
 		log.Println("Setting up simplified tracker routes")
 		tracker := api.Group("/tracker")
 		{
-			tracker.POST("/add", s.simpleTrackerHandlers.AddTracker)           // POST /api/tracker/add
-			tracker.GET("/list", s.simpleTrackerHandlers.GetTrackers)          // GET /api/tracker/list
-			tracker.GET("/:id", s.simpleTrackerHandlers.GetTracker)            // GET /api/tracker/:id
-			tracker.DELETE("/:id", s.simpleTrackerHandlers.DeleteTracker)      // DELETE /api/tracker/:id
-			tracker.POST("/check-now", s.simpleTrackerHandlers.CheckNow)       // POST /api/tracker/check-now
-			tracker.GET("/status", s.simpleTrackerHandlers.GetTrackerStatus)   // GET /api/tracker/status
-			tracker.GET("/options", s.simpleTrackerHandlers.GetTrackerOptions) // GET /api/tracker/options
+			tracker.POST("/add", s.simpleTrackerHandlers.AddTracker)                     // POST /api/tracker/add
+			tracker.GET("/list", s.simpleTrackerHandlers.GetTrackers)                    // GET /api/tracker/list
+			tracker.GET("/:id", s.simpleTrackerHandlers.GetTracker)                      // GET /api/tracker/:id
+			tracker.DELETE("/:id", s.simpleTrackerHandlers.DeleteTracker)                // DELETE /api/tracker/:id
+			tracker.POST("/check-now", s.simpleTrackerHandlers.CheckNow)                 // POST /api/tracker/check-now
+			tracker.GET("/status", s.simpleTrackerHandlers.GetTrackerStatus)             // GET /api/tracker/status
+			tracker.GET("/options", s.simpleTrackerHandlers.GetTrackerOptions)           // GET /api/tracker/options
+			tracker.POST("/test-notification", s.simpleTrackerHandlers.TestNotification) // POST /api/tracker/test-notification
 		}
 
 		// Full tracker endpoints (now enabled if tracker is initialized)
