@@ -310,7 +310,6 @@ type CachedStorage struct {
 
 // Storage interface that the cached storage wraps
 type Storage interface {
-	// Card operations
 	SaveCard(card models.Card) error
 	GetCard(id string) (*models.Card, error)
 	SearchCards(filters models.FilterOptions) (*models.SearchResult, error)
@@ -318,16 +317,6 @@ type Storage interface {
 	GetAllCards() ([]models.Card, error)
 	DeleteCard(id string) error
 	ClearAllData() error
-
-	// Tracker operations
-	SaveTracker(tracker models.TrackerItem) error
-	GetTracker(id string) (*models.TrackerItem, error)
-	SearchTrackers(filters models.TrackerFilterOptions) (*models.TrackerSearchResult, error)
-	GetAllTrackers() ([]models.TrackerItem, error)
-	DeleteTracker(id string) error
-	UpdateTracker(id string, fields map[string]interface{}) error
-	SaveTrackersBatch(trackers []models.TrackerItem) error
-	UpdateTrackersBatch(updates []models.TrackerUpdate) error
 }
 
 // NewCachedStorage creates a new cached storage wrapper
@@ -411,9 +400,9 @@ func (cs *CachedStorage) DeleteCard(id string) error {
 	return nil
 }
 
-// ClearAllData removes all cards and resets the database
+// ClearAllData removes all cards and resets the database (preserves tracker data)
 func (cs *CachedStorage) ClearAllData() error {
-	// First clear the underlying storage
+	// First clear the underlying storage (cards only, preserves tracker data)
 	if clearable, ok := cs.storage.(interface{ ClearAllData() error }); ok {
 		err := clearable.ClearAllData()
 		if err != nil {
@@ -423,84 +412,7 @@ func (cs *CachedStorage) ClearAllData() error {
 		return fmt.Errorf("underlying storage does not support ClearAllData operation")
 	}
 
-	// Clear all cache entries
-	cs.cache.InvalidateAll()
-	return nil
-}
-
-// Tracker operations (delegated to underlying storage with cache invalidation)
-
-// SaveTracker saves a tracker and invalidates relevant cache entries
-func (cs *CachedStorage) SaveTracker(tracker models.TrackerItem) error {
-	err := cs.storage.SaveTracker(tracker)
-	if err != nil {
-		return err
-	}
-
-	// Invalidate cache since data has changed
-	cs.cache.InvalidateAll()
-	return nil
-}
-
-// GetTracker retrieves a tracker (no caching for individual trackers)
-func (cs *CachedStorage) GetTracker(id string) (*models.TrackerItem, error) {
-	return cs.storage.GetTracker(id)
-}
-
-// SearchTrackers performs tracker search (could be cached in the future)
-func (cs *CachedStorage) SearchTrackers(filters models.TrackerFilterOptions) (*models.TrackerSearchResult, error) {
-	return cs.storage.SearchTrackers(filters)
-}
-
-// GetAllTrackers retrieves all trackers (no caching for now)
-func (cs *CachedStorage) GetAllTrackers() ([]models.TrackerItem, error) {
-	return cs.storage.GetAllTrackers()
-}
-
-// DeleteTracker deletes a tracker and invalidates cache
-func (cs *CachedStorage) DeleteTracker(id string) error {
-	err := cs.storage.DeleteTracker(id)
-	if err != nil {
-		return err
-	}
-
-	// Invalidate cache since data has changed
-	cs.cache.InvalidateAll()
-	return nil
-}
-
-// UpdateTracker updates a tracker and invalidates cache
-func (cs *CachedStorage) UpdateTracker(id string, fields map[string]interface{}) error {
-	err := cs.storage.UpdateTracker(id, fields)
-	if err != nil {
-		return err
-	}
-
-	// Invalidate cache since data has changed
-	cs.cache.InvalidateAll()
-	return nil
-}
-
-// SaveTrackersBatch saves multiple trackers and invalidates cache
-func (cs *CachedStorage) SaveTrackersBatch(trackers []models.TrackerItem) error {
-	err := cs.storage.SaveTrackersBatch(trackers)
-	if err != nil {
-		return err
-	}
-
-	// Invalidate cache since data has changed
-	cs.cache.InvalidateAll()
-	return nil
-}
-
-// UpdateTrackersBatch updates multiple trackers and invalidates cache
-func (cs *CachedStorage) UpdateTrackersBatch(updates []models.TrackerUpdate) error {
-	err := cs.storage.UpdateTrackersBatch(updates)
-	if err != nil {
-		return err
-	}
-
-	// Invalidate cache since data has changed
+	// Clear all cache entries (only card search cache, not tracker data)
 	cs.cache.InvalidateAll()
 	return nil
 }

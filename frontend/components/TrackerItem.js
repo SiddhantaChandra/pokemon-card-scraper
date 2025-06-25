@@ -1,205 +1,214 @@
-import React, { useState } from 'react';
-import { apiHelpers } from '../lib/api';
+import { useState } from 'react';
+import Image from 'next/image';
+import { useDarkMode } from '../lib/darkModeContext';
 
-const TrackerItem = ({ tracker, onUpdate, onDelete }) => {
-  const [isEditing, setIsEditing] = useState(false);
-  const [editName, setEditName] = useState(tracker.name);
-  const [isUpdating, setIsUpdating] = useState(false);
+export default function TrackerItem({ tracker, onDelete }) {
+  const { isDarkMode } = useDarkMode();
+  const [showDeleteConfirm, setShowDeleteConfirm] = useState(false);
+  const [isDeleting, setIsDeleting] = useState(false);
+  const [imageError, setImageError] = useState(false);
+  const [imageLoading, setImageLoading] = useState(true);
 
-  const handleSaveEdit = async () => {
-    if (editName.trim() === tracker.name) {
-      setIsEditing(false);
-      return;
-    }
-
+  const handleDelete = async () => {
+    setIsDeleting(true);
     try {
-      setIsUpdating(true);
-      await onUpdate(tracker.id, { name: editName.trim() });
-      setIsEditing(false);
+      await onDelete(tracker.id);
     } catch (error) {
-      console.error('Failed to update tracker:', error);
-      alert('Failed to update tracker name');
+      console.error('Failed to delete tracker:', error);
     } finally {
-      setIsUpdating(false);
+      setIsDeleting(false);
+      setShowDeleteConfirm(false);
     }
   };
 
-  const handleCancelEdit = () => {
-    setEditName(tracker.name);
-    setIsEditing(false);
+  const formatPrice = (price) => {
+    if (!price || price === 0) return 'N/A';
+    return `¥${price.toLocaleString()}`;
   };
 
-  const handleKeyPress = (e) => {
-    if (e.key === 'Enter') {
-      handleSaveEdit();
-    } else if (e.key === 'Escape') {
-      handleCancelEdit();
+  const formatDate = (dateString) => {
+    if (!dateString) return 'Never';
+    const date = new Date(dateString);
+    const now = new Date();
+    const diffMs = now - date;
+    const diffMins = Math.floor(diffMs / 60000);
+    const diffHours = Math.floor(diffMins / 60);
+    const diffDays = Math.floor(diffHours / 24);
+
+    if (diffMins < 1) return 'Just now';
+    if (diffMins < 60) return `${diffMins}m ago`;
+    if (diffHours < 24) return `${diffHours}h ago`;
+    if (diffDays < 7) return `${diffDays}d ago`;
+    
+    return date.toLocaleDateString();
+  };
+
+  const handleImageLoad = () => {
+    setImageLoading(false);
+  };
+
+  const handleImageError = () => {
+    setImageError(true);
+    setImageLoading(false);
+  };
+
+  const handleCardClick = () => {
+    if (tracker.url) {
+      window.open(tracker.url, '_blank', 'noopener,noreferrer');
     }
   };
 
-  const getStockStatus = () => {
+  // Get border color and stock tab styling based on stock status
+  const getStockStyling = () => {
     if (tracker.in_stock) {
       return {
-        text: 'In Stock',
-        color: 'text-green-600 dark:text-green-400',
-        bgColor: 'bg-green-100 dark:bg-green-900',
-        icon: '✅',
+        borderColor: 'border-green-500 dark:border-green-400',
+        tabColor: 'bg-green-500 text-white',
+        statusText: 'IN STOCK'
       };
     } else {
       return {
-        text: 'Out of Stock',
-        color: 'text-red-600 dark:text-red-400',
-        bgColor: 'bg-red-100 dark:bg-red-900',
-        icon: '❌',
+        borderColor: 'border-red-500 dark:border-red-400',
+        tabColor: 'bg-red-500 text-white',
+        statusText: 'OUT OF STOCK'
       };
     }
   };
 
-  const status = getStockStatus();
-  const lastUpdated = tracker.last_updated 
-    ? apiHelpers.formatDate(tracker.last_updated)
-    : 'Never';
+  const stockStyling = getStockStyling();
 
   return (
-    <div className="bg-white dark:bg-gray-800 border border-gray-200 dark:border-gray-700 rounded-lg p-6 shadow-sm hover:shadow-md transition-shadow">
-      <div className="flex flex-col lg:flex-row gap-4">
-        {/* Image */}
-        <div className="lg:w-32 lg:h-32 w-full h-48 bg-gray-100 dark:bg-gray-700 rounded-lg overflow-hidden flex-shrink-0">
-          {tracker.image ? (
-            <img
-              src={tracker.image}
-              alt={tracker.name || 'Product'}
-              className="w-full h-full object-cover"
-              onError={(e) => {
-                e.target.src = '/images/card-placeholder.svg';
-              }}
-            />
-          ) : (
-            <div className="w-full h-full flex items-center justify-center text-gray-400 dark:text-gray-500">
-              <span className="text-2xl">🎴</span>
+    <>
+      <div className={`group bg-white dark:bg-gray-800 rounded-lg shadow-md hover:shadow-lg transition-all duration-200 overflow-hidden border-2 ${stockStyling.borderColor} hover:border-opacity-80`}>
+        {/* Image Container */}
+        <div className="relative aspect-[3/4] bg-gray-100 dark:bg-gray-700 overflow-hidden">
+          {imageLoading && tracker.image_url && (
+            <div className="absolute inset-0 flex items-center justify-center z-10">
+              <div className="animate-spin rounded-full h-8 w-8 border-b-2 border-blue-600 dark:border-blue-400"></div>
             </div>
           )}
-        </div>
-
-        {/* Content */}
-        <div className="flex-1 min-w-0">
-          {/* Header */}
-          <div className="flex flex-col sm:flex-row sm:items-start sm:justify-between gap-2 mb-3">
-            <div className="flex-1 min-w-0">
-              {isEditing ? (
-                <div className="flex gap-2">
-                  <input
-                    type="text"
-                    value={editName}
-                    onChange={(e) => setEditName(e.target.value)}
-                    onKeyDown={handleKeyPress}
-                    className="flex-1 px-2 py-1 text-lg font-semibold border border-gray-300 dark:border-gray-600 rounded bg-white dark:bg-gray-700 text-gray-900 dark:text-gray-100"
-                    autoFocus
-                    disabled={isUpdating}
-                  />
-                  <button
-                    onClick={handleSaveEdit}
-                    disabled={isUpdating}
-                    className="px-3 py-1 bg-green-600 text-white rounded hover:bg-green-700 disabled:opacity-50"
-                  >
-                    ✓
-                  </button>
-                  <button
-                    onClick={handleCancelEdit}
-                    disabled={isUpdating}
-                    className="px-3 py-1 bg-gray-600 text-white rounded hover:bg-gray-700 disabled:opacity-50"
-                  >
-                    ✕
-                  </button>
-                </div>
-              ) : (
-                <h3 
-                  className="text-lg font-semibold text-gray-900 dark:text-gray-100 truncate cursor-pointer hover:text-blue-600 dark:hover:text-blue-400"
-                  onClick={() => setIsEditing(true)}
-                  title={tracker.name || 'Unnamed Tracker'}
-                >
-                  {tracker.name || 'Unnamed Tracker'}
-                </h3>
-              )}
+          
+          {tracker.image_url && !imageError ? (
+            <Image
+              src={tracker.image_url}
+              alt={tracker.name || 'Pokemon Card'}
+              fill
+              className={`object-cover transition-transform duration-200 group-hover:scale-105${
+                imageLoading ? 'opacity-0' : 'opacity-100'
+              }`}
+              onLoad={handleImageLoad}
+              onError={handleImageError}
+              loading="lazy"
+              unoptimized={true}
+              crossOrigin="anonymous"
+              onClick={handleCardClick}
+            />
+          ) : (
+            <div className="w-full h-full flex items-center justify-center bg-gray-200 dark:bg-gray-600">
+              <div className="text-center text-gray-500 dark:text-gray-400">
+                <svg className="mx-auto h-12 w-12 mb-2" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M4 16l4.586-4.586a2 2 0 012.828 0L16 16m-2-2l1.586-1.586a2 2 0 012.828 0L20 14m-6-6h.01M6 20h12a2 2 0 002-2V6a2 2 0 00-2-2H6a2 2 0 00-2 2v12a2 2 0 002 2z" />
+                </svg>
+                <p className="text-xs">No Image</p>
+              </div>
             </div>
+          )}
 
-            {/* Stock Status */}
-            <div className={`inline-flex items-center gap-1 px-2 py-1 rounded-full text-sm font-medium ${status.bgColor} ${status.color}`}>
-              <span>{status.icon}</span>
-              {status.text}
-            </div>
-          </div>
-
-          {/* URL */}
-          <div className="mb-3">
-            <a
-              href={tracker.url}
-              target="_blank"
-              rel="noopener noreferrer"
-              className="text-blue-600 dark:text-blue-400 hover:underline text-sm break-all"
+          {/* Action Buttons */}
+          <div className="absolute bottom-2 right-2 flex gap-1 opacity-0 group-hover:opacity-100 transition-opacity duration-200 z-20">
+            <button
+              onClick={(e) => {
+                e.stopPropagation();
+                setShowDeleteConfirm(true);
+              }}
+              className="bg-black bg-opacity-75 text-white p-2 rounded hover:bg-red-600 transition-colors"
+              title="Delete tracker"
             >
-              {tracker.url}
-            </a>
-          </div>
-
-          {/* Details */}
-          <div className="grid grid-cols-2 lg:grid-cols-4 gap-4 text-sm">
-            <div>
-              <span className="text-gray-500 dark:text-gray-400">Price:</span>
-              <div className="font-medium text-gray-900 dark:text-gray-100">
-                {tracker.price_yen || 'Unknown'}
-              </div>
-            </div>
-            
-            <div>
-              <span className="text-gray-500 dark:text-gray-400">Last Updated:</span>
-              <div className="font-medium text-gray-900 dark:text-gray-100">
-                {lastUpdated}
-              </div>
-            </div>
-
-            <div>
-              <span className="text-gray-500 dark:text-gray-400">Added:</span>
-              <div className="font-medium text-gray-900 dark:text-gray-100">
-                {apiHelpers.formatDate(tracker.created_at)}
-              </div>
-            </div>
-
-            <div>
-              <span className="text-gray-500 dark:text-gray-400">ID:</span>
-              <div className="font-mono text-xs text-gray-600 dark:text-gray-400">
-                {tracker.id}
-              </div>
-            </div>
+              <svg className="h-8 w-8" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M19 7l-.867 12.142A2 2 0 0116.138 21H7.862a2 2 0 01-1.995-1.858L5 7m5 4v6m4-6v6m1-10V4a1 1 0 00-1-1h-4a1 1 0 00-1 1v3M4 7h16" />
+              </svg>
+            </button>
           </div>
         </div>
 
-        {/* Actions */}
-        <div className="flex lg:flex-col gap-2 lg:w-auto w-full">
+        {/* Card Content */}
+        <div className="px-4 py-2">
+          {/* Card Name */}
+          <h3 className="font-semibold text-gray-900 dark:text-white text-sm mb-2">
+            {tracker.name}
+          </h3>
+
+          {/* Stock Status Tab - Prominent */}
+          <div className="m-0">
+            <span className={`cursor-pointer inline-block w-full text-center py-2 px-3 rounded-lg text-sm font-bold ${stockStyling.tabColor}`} onClick={handleCardClick}>
+              {stockStyling.statusText}
+            </span>
+          </div>
+
+          {/* Price and Last Checked */}
+          <div className="space-y-2 my-1">
+            <div className="flex items-center justify-between">
+              <span className="text-sm text-gray-600 dark:text-gray-400">Price:</span>
+              <span className="text-lg font-bold text-gray-900 dark:text-white">
+                {formatPrice(tracker.price)}
+              </span>
+            </div>
+
+          </div>
+
+          {/* View Button */}
           <button
-            onClick={() => window.open(tracker.url, '_blank')}
-            className="flex-1 lg:flex-none px-3 py-2 bg-blue-600 text-white rounded hover:bg-blue-700 transition-colors text-sm"
+            onClick={handleCardClick}
+            className="w-full bg-blue-600 hover:bg-blue-700 dark:bg-blue-500 dark:hover:bg-blue-600 text-white py-2 px-3 rounded text-sm font-medium transition-colors duration-200 flex items-center justify-center space-x-1"
           >
-            View Product
-          </button>
-          
-          <button
-            onClick={() => setIsEditing(!isEditing)}
-            className="flex-1 lg:flex-none px-3 py-2 bg-gray-600 text-white rounded hover:bg-gray-700 transition-colors text-sm"
-          >
-            Edit Name
-          </button>
-          
-          <button
-            onClick={() => onDelete(tracker.id)}
-            className="flex-1 lg:flex-none px-3 py-2 bg-red-600 text-white rounded hover:bg-red-700 transition-colors text-sm"
-          >
-            Delete
+            <span>View</span>
+            <svg className="h-4 w-4" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M10 6H6a2 2 0 00-2 2v10a2 2 0 002 2h10a2 2 0 002-2v-4M14 4h6m0 0v6m0-6L10 14" />
+            </svg>
           </button>
         </div>
       </div>
-    </div>
-  );
-};
 
-export default TrackerItem; 
+      {/* Delete Confirmation Modal */}
+      {showDeleteConfirm && (
+        <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50 p-4">
+          <div className={`rounded-lg p-6 max-w-sm w-full ${
+            isDarkMode ? 'bg-gray-800' : 'bg-white'
+          }`}>
+            <h3 className={`text-lg font-semibold mb-2 ${
+              isDarkMode ? 'text-white' : 'text-gray-900'
+            }`}>
+              Delete Tracker
+            </h3>
+            <p className={`text-sm mb-4 ${
+              isDarkMode ? 'text-gray-300' : 'text-gray-600'
+            }`}>
+              Are you sure you want to delete "{tracker.name}"? This action cannot be undone.
+            </p>
+            
+            <div className="flex gap-3 justify-end">
+              <button
+                onClick={() => setShowDeleteConfirm(false)}
+                disabled={isDeleting}
+                className={`px-4 py-2 text-sm font-medium rounded-lg transition-colors disabled:opacity-50 ${
+                  isDarkMode
+                    ? 'bg-gray-700 text-gray-300 hover:bg-gray-600'
+                    : 'bg-gray-200 text-gray-700 hover:bg-gray-300'
+                }`}
+              >
+                Cancel
+              </button>
+              <button
+                onClick={handleDelete}
+                disabled={isDeleting}
+                className="px-4 py-2 text-sm font-medium bg-red-600 text-white rounded-lg hover:bg-red-700 transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
+              >
+                {isDeleting ? 'Deleting...' : 'Delete'}
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+    </>
+  );
+} 

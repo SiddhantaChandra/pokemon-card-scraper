@@ -1,179 +1,185 @@
-import React, { useState } from 'react';
-import { useTrackers } from '../hooks/useTrackers';
+import { useState } from 'react';
+import { useDarkMode } from '../lib/darkModeContext';
 import TrackerItem from './TrackerItem';
-import AddTrackerForm from './AddTrackerForm';
-import TrackerFilters from './TrackerFilters';
-import Pagination from './Pagination';
 
-const TrackerList = () => {
-  const [showAddForm, setShowAddForm] = useState(false);
-  const {
-    trackers,
-    pagination,
-    filters,
-    isLoading,
-    error,
-    addTracker,
-    updateTracker,
-    deleteTracker,
-    updateFilters,
-    refresh,
-  } = useTrackers();
+export default function TrackerList({ trackers, onDelete, loading }) {
+  const { isDarkMode } = useDarkMode();
+  const [filter, setFilter] = useState('all'); // all, in_stock, out_of_stock
+  const [sortBy, setSortBy] = useState('created_at'); // created_at, name, price, last_checked
+  const [sortOrder, setSortOrder] = useState('desc'); // asc, desc
 
-  const handleAddTracker = async (url, name) => {
-    try {
-      await addTracker(url, name);
-      setShowAddForm(false);
-    } catch (error) {
-      console.error('Failed to add tracker:', error);
-      throw error; // Re-throw to let form handle error display
+  // Filter trackers based on selected filter
+  const filteredTrackers = trackers.filter(tracker => {
+    if (filter === 'in_stock') return tracker.in_stock;
+    if (filter === 'out_of_stock') return !tracker.in_stock;
+    return true; // 'all'
+  });
+
+  // Sort trackers
+  const sortedTrackers = [...filteredTrackers].sort((a, b) => {
+    let aValue, bValue;
+    
+    switch (sortBy) {
+      case 'name':
+        aValue = a.name.toLowerCase();
+        bValue = b.name.toLowerCase();
+        break;
+      case 'price':
+        aValue = a.price || 0;
+        bValue = b.price || 0;
+        break;
+      case 'last_checked':
+        aValue = new Date(a.last_checked || 0);
+        bValue = new Date(b.last_checked || 0);
+        break;
+      case 'created_at':
+      default:
+        aValue = new Date(a.created_at);
+        bValue = new Date(b.created_at);
+        break;
     }
-  };
-
-  const handleUpdateTracker = async (id, data) => {
-    try {
-      await updateTracker(id, data);
-    } catch (error) {
-      console.error('Failed to update tracker:', error);
-      throw error;
+    
+    if (sortOrder === 'asc') {
+      return aValue > bValue ? 1 : -1;
+    } else {
+      return aValue < bValue ? 1 : -1;
     }
-  };
+  });
 
-  const handleDeleteTracker = async (id) => {
-    if (window.confirm('Are you sure you want to delete this tracker?')) {
-      try {
-        await deleteTracker(id);
-      } catch (error) {
-        console.error('Failed to delete tracker:', error);
-        alert('Failed to delete tracker. Please try again.');
-      }
-    }
+  const getFilterCount = (filterType) => {
+    if (filterType === 'in_stock') return trackers.filter(t => t.in_stock).length;
+    if (filterType === 'out_of_stock') return trackers.filter(t => !t.in_stock).length;
+    return trackers.length;
   };
-
-  const handlePageChange = (page) => {
-    updateFilters({ page });
-  };
-
-  const handleFiltersChange = (newFilters) => {
-    updateFilters(newFilters);
-  };
-
-  if (error) {
-    return (
-      <div className="p-4 bg-red-50 dark:bg-red-900 border border-red-200 dark:border-red-700 rounded-lg">
-        <p className="text-red-800 dark:text-red-200">
-          Failed to load trackers: {error.message}
-        </p>
-        <button
-          onClick={refresh}
-          className="mt-2 px-4 py-2 bg-red-600 text-white rounded hover:bg-red-700 transition-colors"
-        >
-          Retry
-        </button>
-      </div>
-    );
-  }
 
   return (
-    <div className="space-y-6">
-      {/* Header */}
-      <div className="flex flex-col sm:flex-row justify-between items-start sm:items-center gap-4">
-        <div>
-          <h2 className="text-2xl font-bold text-gray-900 dark:text-gray-100">
-            Stock Trackers
+    <div>
+      {/* Header with filters and sort */}
+      <div className={`rounded-lg shadow-md p-4 mb-6 border ${
+        isDarkMode ? 'bg-gray-800 border-gray-700' : 'bg-white border-gray-200'
+      }`}>
+        <div className="flex flex-col lg:flex-row lg:items-center lg:justify-between gap-4">
+          <h2 className={`text-xl font-semibold ${
+            isDarkMode ? 'text-white' : 'text-gray-900'
+          }`}>
+            Your Trackers ({sortedTrackers.length})
           </h2>
-          <p className="text-gray-600 dark:text-gray-400">
-            Monitor Pokemon card stock changes
-          </p>
+          
+          <div className="flex flex-col sm:flex-row gap-4">
+            {/* Filter Buttons */}
+            <div className="flex gap-2">
+              <button
+                onClick={() => setFilter('all')}
+                className={`px-3 py-1 rounded-full text-sm font-medium transition-colors ${
+                  filter === 'all'
+                    ? isDarkMode
+                      ? 'bg-blue-600 text-white'
+                      : 'bg-blue-500 text-white'
+                    : isDarkMode
+                      ? 'bg-gray-700 text-gray-300 hover:bg-gray-600'
+                      : 'bg-gray-200 text-gray-700 hover:bg-gray-300'
+                }`}
+              >
+                All ({getFilterCount('all')})
+              </button>
+              <button
+                onClick={() => setFilter('in_stock')}
+                className={`px-3 py-1 rounded-full text-sm font-medium transition-colors ${
+                  filter === 'in_stock'
+                    ? 'bg-green-600 text-white'
+                    : isDarkMode
+                      ? 'bg-gray-700 text-gray-300 hover:bg-gray-600'
+                      : 'bg-gray-200 text-gray-700 hover:bg-gray-300'
+                }`}
+              >
+                In Stock ({getFilterCount('in_stock')})
+              </button>
+              <button
+                onClick={() => setFilter('out_of_stock')}
+                className={`px-3 py-1 rounded-full text-sm font-medium transition-colors ${
+                  filter === 'out_of_stock'
+                    ? 'bg-red-600 text-white'
+                    : isDarkMode
+                      ? 'bg-gray-700 text-gray-300 hover:bg-gray-600'
+                      : 'bg-gray-200 text-gray-700 hover:bg-gray-300'
+                }`}
+              >
+                Out of Stock ({getFilterCount('out_of_stock')})
+              </button>
+            </div>
+
+            {/* Sort Controls */}
+            <div className="flex gap-2">
+              <select
+                value={sortBy}
+                onChange={(e) => setSortBy(e.target.value)}
+                className={`px-3 py-1 rounded border text-sm ${
+                  isDarkMode
+                    ? 'bg-gray-700 border-gray-600 text-white'
+                    : 'bg-white border-gray-300 text-gray-900'
+                }`}
+              >
+                <option value="created_at">Date Added</option>
+                <option value="name">Name</option>
+                <option value="price">Price</option>
+                <option value="last_checked">Last Checked</option>
+              </select>
+              
+              <button
+                onClick={() => setSortOrder(sortOrder === 'asc' ? 'desc' : 'asc')}
+                className={`px-2 py-1 rounded border text-sm ${
+                  isDarkMode
+                    ? 'bg-gray-700 border-gray-600 text-white hover:bg-gray-600'
+                    : 'bg-white border-gray-300 text-gray-900 hover:bg-gray-50'
+                }`}
+                title={`Sort ${sortOrder === 'asc' ? 'descending' : 'ascending'}`}
+              >
+                {sortOrder === 'asc' ? '↑' : '↓'}
+              </button>
+            </div>
+          </div>
         </div>
-        
-        <button
-          onClick={() => setShowAddForm(!showAddForm)}
-          className="px-4 py-2 bg-blue-600 text-white rounded-lg hover:bg-blue-700 transition-colors flex items-center gap-2"
-        >
-          <span>+</span>
-          Add Tracker
-        </button>
       </div>
 
-      {/* Add Tracker Form */}
-      {showAddForm && (
-        <div className="bg-white dark:bg-gray-800 border border-gray-200 dark:border-gray-700 rounded-lg p-6">
-          <h3 className="text-lg font-semibold text-gray-900 dark:text-gray-100 mb-4">
-            Add New Tracker
-          </h3>
-          <AddTrackerForm
-            onSubmit={handleAddTracker}
-            onCancel={() => setShowAddForm(false)}
-          />
+      {/* Loading State */}
+      {loading && (
+        <div className={`text-center py-8 ${
+          isDarkMode ? 'text-gray-400' : 'text-gray-500'
+        }`}>
+          <div className="inline-block animate-spin rounded-full h-8 w-8 border-b-2 border-current"></div>
+          <p className="mt-2">Loading trackers...</p>
         </div>
       )}
 
-      {/* Filters */}
-      <TrackerFilters
-        filters={filters}
-        onChange={handleFiltersChange}
-        isLoading={isLoading}
-      />
-
-      {/* Tracker List */}
-      {isLoading && trackers.length === 0 ? (
-        <div className="flex justify-center items-center py-12">
-          <div className="animate-spin rounded-full h-12 w-12 border-b-2 border-blue-600"></div>
-        </div>
-      ) : trackers.length === 0 ? (
-        <div className="text-center py-12">
-          <div className="text-gray-400 dark:text-gray-500 text-6xl mb-4">📊</div>
-          <h3 className="text-lg font-medium text-gray-900 dark:text-gray-100 mb-2">
-            No trackers yet
-          </h3>
-          <p className="text-gray-600 dark:text-gray-400 mb-4">
-            Add your first tracker to start monitoring stock changes
-          </p>
-          <button
-            onClick={() => setShowAddForm(true)}
-            className="px-4 py-2 bg-blue-600 text-white rounded-lg hover:bg-blue-700 transition-colors"
-          >
-            Add Your First Tracker
-          </button>
-        </div>
-      ) : (
-        <>
-          <div className="grid gap-4">
-            {trackers.map((tracker) => (
-              <TrackerItem
-                key={tracker.id}
-                tracker={tracker}
-                onUpdate={handleUpdateTracker}
-                onDelete={handleDeleteTracker}
-              />
-            ))}
-          </div>
-
-          {/* Pagination */}
-          {pagination.total_pages > 1 && (
-            <Pagination
-              currentPage={pagination.page}
-              totalPages={pagination.total_pages}
-              totalItems={pagination.total}
-              itemsPerPage={pagination.page_size}
-              onPageChange={handlePageChange}
+      {/* Trackers Grid - Similar to CardGrid */}
+      {!loading && sortedTrackers.length > 0 && (
+        <div className="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-3 lg:grid-cols-4 xl:grid-cols-5 gap-4">
+          {sortedTrackers.map((tracker) => (
+            <TrackerItem
+              key={tracker.id}
+              tracker={tracker}
+              onDelete={onDelete}
             />
-          )}
-        </>
+          ))}
+        </div>
       )}
 
-      {/* Loading overlay */}
-      {isLoading && trackers.length > 0 && (
-        <div className="fixed inset-0 bg-black bg-opacity-20 flex justify-center items-center z-50">
-          <div className="bg-white dark:bg-gray-800 rounded-lg p-4 flex items-center gap-3">
-            <div className="animate-spin rounded-full h-6 w-6 border-b-2 border-blue-600"></div>
-            <span className="text-gray-900 dark:text-gray-100">Updating...</span>
-          </div>
+      {/* Empty State */}
+      {!loading && sortedTrackers.length === 0 && filteredTrackers.length !== trackers.length && (
+        <div className={`text-center py-8 ${
+          isDarkMode ? 'text-gray-400' : 'text-gray-500'
+        }`}>
+          <p>No trackers match the current filter.</p>
+          <button
+            onClick={() => setFilter('all')}
+            className={`mt-2 text-sm underline ${
+              isDarkMode ? 'text-blue-400 hover:text-blue-300' : 'text-blue-600 hover:text-blue-700'
+            }`}
+          >
+            Show all trackers
+          </button>
         </div>
       )}
     </div>
   );
-};
-
-export default TrackerList; 
+} 

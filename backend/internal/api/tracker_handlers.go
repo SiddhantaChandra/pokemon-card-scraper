@@ -2,51 +2,78 @@ package api
 
 import (
 	"fmt"
+	"log"
 	"net/http"
-	"strconv"
+	"net/url"
+	"strings"
+	"time"
 
-	"github.com/SiddhantaChandra/pokemon-card-scraper/internal/monitor"
+	"github.com/SiddhantaChandra/pokemon-card-scraper/internal/storage"
 	"github.com/SiddhantaChandra/pokemon-card-scraper/pkg/models"
 	"github.com/gin-gonic/gin"
 )
 
-// TrackerHandlers handles tracker-related HTTP requests
+// TrackerHandlers contains all tracker-related HTTP handlers
 type TrackerHandlers struct {
-	monitor *monitor.StockMonitor
+	storage storage.TrackerStorage
 }
 
-// NewTrackerHandlers creates new tracker handlers
-func NewTrackerHandlers(stockMonitor *monitor.StockMonitor) *TrackerHandlers {
+// NewTrackerHandlers creates a new tracker handlers instance
+func NewTrackerHandlers(storage storage.TrackerStorage) *TrackerHandlers {
 	return &TrackerHandlers{
-		monitor: stockMonitor,
+		storage: storage,
 	}
 }
 
-// AddTracker handles POST /api/tracker - Add new tracker
+// AddTracker handles POST /api/tracker/add
 func (th *TrackerHandlers) AddTracker(c *gin.Context) {
-	var request AddTrackerRequest
-	if err := c.ShouldBindJSON(&request); err != nil {
+	var req models.AddTrackerRequest
+	if err := c.ShouldBindJSON(&req); err != nil {
 		c.JSON(http.StatusBadRequest, gin.H{
 			"error":   "Invalid request body",
-			"details": err.Error(),
+			"message": err.Error(),
 		})
 		return
 	}
 
-	// Validate required fields
-	if request.URL == "" {
+	// Validate URL
+	if err := th.validateURL(req.URL); err != nil {
 		c.JSON(http.StatusBadRequest, gin.H{
-			"error": "URL is required",
+			"error":   "Invalid URL",
+			"message": err.Error(),
 		})
 		return
 	}
 
-	// Add tracker via monitor service
-	tracker, err := th.monitor.AddTracker(request.URL, request.Name)
-	if err != nil {
+	// Generate name if not provided
+	if req.Name == "" {
+		req.Name = th.generateTrackerName(req.URL)
+	}
+
+	// Create tracker entry
+	tracker := models.TrackerEntry{
+		URL:     req.URL,
+		Name:    req.Name,
+		UserID:  req.UserID,
+		Status:  models.TrackerStatusActive,
+		InStock: false, // Will be updated on first check
+		Price:   0,     // Will be updated on first check
+	}
+
+	// Save tracker
+	if err := th.storage.SaveTracker(tracker); err != nil {
+		if err == storage.ErrTrackerURLExists {
+			c.JSON(http.StatusConflict, gin.H{
+				"error":   "URL already being tracked",
+				"message": "This URL is already in your tracker list",
+			})
+			return
+		}
+
+		log.Printf("Failed to save tracker: %v", err)
 		c.JSON(http.StatusInternalServerError, gin.H{
 			"error":   "Failed to add tracker",
-			"details": err.Error(),
+			"message": "Could not save tracker to database",
 		})
 		return
 	}
@@ -57,44 +84,18 @@ func (th *TrackerHandlers) AddTracker(c *gin.Context) {
 	})
 }
 
-// GetTrackers handles GET /api/tracker - List all trackers with filtering
+// GetTrackers handles GET /api/tracker/list
 func (th *TrackerHandlers) GetTrackers(c *gin.Context) {
-	// Parse query parameters
-	filters := models.TrackerFilterOptions{
-		Query:       c.Query("q"),
-		InStockOnly: c.Query("in_stock_only") == "true",
-		UserID:      c.Query("user_id"),
-		SortBy:      c.DefaultQuery("sort_by", "created_at"),
-		SortOrder:   c.DefaultQuery("sort_order", "desc"),
-	}
+	// Parse filter options from query parameters
+	filters := th.parseTrackerFilterOptions(c.Request.URL.Query())
 
-	// Parse pagination
-	if page := c.Query("page"); page != "" {
-		if p, err := strconv.Atoi(page); err == nil && p > 0 {
-			filters.Page = p
-		} else {
-			filters.Page = 1
-		}
-	} else {
-		filters.Page = 1
-	}
-
-	if pageSize := c.Query("page_size"); pageSize != "" {
-		if ps, err := strconv.Atoi(pageSize); err == nil && ps > 0 && ps <= 100 {
-			filters.PageSize = ps
-		} else {
-			filters.PageSize = 50
-		}
-	} else {
-		filters.PageSize = 50
-	}
-
-	// Get trackers via monitor service
-	result, err := th.monitor.GetTrackers(filters)
+	// Search trackers
+	result, err := th.storage.SearchTrackers(filters)
 	if err != nil {
+		log.Printf("Failed to get trackers: %v", err)
 		c.JSON(http.StatusInternalServerError, gin.H{
-			"error":   "Failed to get trackers",
-			"details": err.Error(),
+			"error":   "Failed to retrieve trackers",
+			"message": err.Error(),
 		})
 		return
 	}
@@ -102,43 +103,32 @@ func (th *TrackerHandlers) GetTrackers(c *gin.Context) {
 	c.JSON(http.StatusOK, result)
 }
 
-// GetTracker handles GET /api/tracker/:id - Get specific tracker
+// GetTracker handles GET /api/tracker/:id
 func (th *TrackerHandlers) GetTracker(c *gin.Context) {
-	id := c.Param("id")
-	if id == "" {
+	trackerID := c.Param("id")
+	if trackerID == "" {
 		c.JSON(http.StatusBadRequest, gin.H{
-			"error": "Tracker ID is required",
+			"error":   "Missing tracker ID",
+			"message": "Tracker ID is required",
 		})
 		return
 	}
 
-	// Get single tracker (would need to add this method to monitor service)
-	filters := models.TrackerFilterOptions{
-		Page:     1,
-		PageSize: 1,
-	}
-
-	result, err := th.monitor.GetTrackers(filters)
+	// Get tracker from storage
+	tracker, err := th.storage.GetTracker(trackerID)
 	if err != nil {
-		c.JSON(http.StatusInternalServerError, gin.H{
-			"error":   "Failed to get tracker",
-			"details": err.Error(),
-		})
-		return
-	}
-
-	// Find tracker by ID
-	var tracker *models.TrackerItem
-	for _, t := range result.Trackers {
-		if t.ID == id {
-			tracker = &t
-			break
+		if err == storage.ErrTrackerNotFound {
+			c.JSON(http.StatusNotFound, gin.H{
+				"error":   "Tracker not found",
+				"message": fmt.Sprintf("Tracker with ID %s not found", trackerID),
+			})
+			return
 		}
-	}
 
-	if tracker == nil {
-		c.JSON(http.StatusNotFound, gin.H{
-			"error": "Tracker not found",
+		log.Printf("Failed to get tracker: %v", err)
+		c.JSON(http.StatusInternalServerError, gin.H{
+			"error":   "Failed to retrieve tracker",
+			"message": err.Error(),
 		})
 		return
 	}
@@ -146,72 +136,94 @@ func (th *TrackerHandlers) GetTracker(c *gin.Context) {
 	c.JSON(http.StatusOK, tracker)
 }
 
-// UpdateTracker handles PUT /api/tracker/:id - Update tracker
+// UpdateTracker handles PUT /api/tracker/:id
 func (th *TrackerHandlers) UpdateTracker(c *gin.Context) {
-	id := c.Param("id")
-	if id == "" {
+	trackerID := c.Param("id")
+	if trackerID == "" {
 		c.JSON(http.StatusBadRequest, gin.H{
-			"error": "Tracker ID is required",
+			"error":   "Missing tracker ID",
+			"message": "Tracker ID is required",
 		})
 		return
 	}
 
-	var request UpdateTrackerRequest
-	if err := c.ShouldBindJSON(&request); err != nil {
+	var req models.UpdateTrackerRequest
+	if err := c.ShouldBindJSON(&req); err != nil {
 		c.JSON(http.StatusBadRequest, gin.H{
 			"error":   "Invalid request body",
-			"details": err.Error(),
+			"message": err.Error(),
 		})
 		return
 	}
 
-	// Convert request to update fields map
-	fields := make(map[string]interface{})
-	if request.Name != nil {
-		fields["name"] = *request.Name
-	}
-	if request.InStock != nil {
-		fields["in_stock"] = *request.InStock
-	}
-	if request.Image != nil {
-		fields["image"] = *request.Image
-	}
-	if request.PriceYen != nil {
-		fields["price_yen"] = *request.PriceYen
-	}
-	if request.UserID != nil {
-		fields["user_id"] = *request.UserID
+	// Get existing tracker
+	tracker, err := th.storage.GetTracker(trackerID)
+	if err != nil {
+		if err == storage.ErrTrackerNotFound {
+			c.JSON(http.StatusNotFound, gin.H{
+				"error":   "Tracker not found",
+				"message": fmt.Sprintf("Tracker with ID %s not found", trackerID),
+			})
+			return
+		}
+
+		log.Printf("Failed to get tracker for update: %v", err)
+		c.JSON(http.StatusInternalServerError, gin.H{
+			"error":   "Failed to retrieve tracker",
+			"message": err.Error(),
+		})
+		return
 	}
 
-	// Update tracker via monitor service
-	if err := th.monitor.UpdateTracker(id, fields); err != nil {
+	// Update fields
+	if req.Name != nil {
+		tracker.Name = *req.Name
+	}
+	if req.Status != nil {
+		tracker.Status = *req.Status
+	}
+
+	// Save updated tracker
+	if err := th.storage.UpdateTracker(*tracker); err != nil {
+		log.Printf("Failed to update tracker: %v", err)
 		c.JSON(http.StatusInternalServerError, gin.H{
 			"error":   "Failed to update tracker",
-			"details": err.Error(),
+			"message": err.Error(),
 		})
 		return
 	}
 
 	c.JSON(http.StatusOK, gin.H{
 		"message": "Tracker updated successfully",
+		"tracker": tracker,
 	})
 }
 
-// DeleteTracker handles DELETE /api/tracker/:id - Remove tracker
+// DeleteTracker handles DELETE /api/tracker/:id
 func (th *TrackerHandlers) DeleteTracker(c *gin.Context) {
-	id := c.Param("id")
-	if id == "" {
+	trackerID := c.Param("id")
+	if trackerID == "" {
 		c.JSON(http.StatusBadRequest, gin.H{
-			"error": "Tracker ID is required",
+			"error":   "Missing tracker ID",
+			"message": "Tracker ID is required",
 		})
 		return
 	}
 
-	// Remove tracker via monitor service
-	if err := th.monitor.RemoveTracker(id); err != nil {
+	// Delete tracker
+	if err := th.storage.DeleteTracker(trackerID); err != nil {
+		if err == storage.ErrTrackerNotFound {
+			c.JSON(http.StatusNotFound, gin.H{
+				"error":   "Tracker not found",
+				"message": fmt.Sprintf("Tracker with ID %s not found", trackerID),
+			})
+			return
+		}
+
+		log.Printf("Failed to delete tracker: %v", err)
 		c.JSON(http.StatusInternalServerError, gin.H{
 			"error":   "Failed to delete tracker",
-			"details": err.Error(),
+			"message": err.Error(),
 		})
 		return
 	}
@@ -221,170 +233,234 @@ func (th *TrackerHandlers) DeleteTracker(c *gin.Context) {
 	})
 }
 
-// BulkAddTrackers handles POST /api/tracker/bulk - Bulk add trackers
-func (th *TrackerHandlers) BulkAddTrackers(c *gin.Context) {
-	var request BulkAddTrackersRequest
-	if err := c.ShouldBindJSON(&request); err != nil {
-		c.JSON(http.StatusBadRequest, gin.H{
-			"error":   "Invalid request body",
-			"details": err.Error(),
-		})
-		return
-	}
-
-	if len(request.Trackers) == 0 {
-		c.JSON(http.StatusBadRequest, gin.H{
-			"error": "At least one tracker is required",
-		})
-		return
-	}
-
-	if len(request.Trackers) > 100 {
-		c.JSON(http.StatusBadRequest, gin.H{
-			"error": "Maximum 100 trackers allowed per bulk operation",
-		})
-		return
-	}
-
-	// Add trackers one by one (could be optimized with batch operations)
-	var addedTrackers []models.TrackerItem
-	var errors []string
-
-	for _, trackerReq := range request.Trackers {
-		if trackerReq.URL == "" {
-			errors = append(errors, "URL is required for all trackers")
-			continue
-		}
-
-		tracker, err := th.monitor.AddTracker(trackerReq.URL, trackerReq.Name)
-		if err != nil {
-			errors = append(errors, fmt.Sprintf("Failed to add tracker %s: %v", trackerReq.URL, err))
-			continue
-		}
-
-		addedTrackers = append(addedTrackers, *tracker)
-	}
-
-	response := gin.H{
-		"message":        fmt.Sprintf("Bulk operation completed. Added %d trackers", len(addedTrackers)),
-		"added_trackers": addedTrackers,
-		"total_added":    len(addedTrackers),
-		"total_failed":   len(errors),
-	}
-
-	if len(errors) > 0 {
-		response["errors"] = errors
-	}
-
-	// Return 207 Multi-Status if there were partial failures
-	if len(errors) > 0 && len(addedTrackers) > 0 {
-		c.JSON(http.StatusMultiStatus, response)
-	} else if len(errors) > 0 {
-		c.JSON(http.StatusBadRequest, response)
-	} else {
-		c.JSON(http.StatusCreated, response)
-	}
-}
-
-// Monitor Control Handlers
-
-// StartMonitoring handles POST /api/monitor/start - Start monitoring
-func (th *TrackerHandlers) StartMonitoring(c *gin.Context) {
-	if err := th.monitor.StartMonitoring(); err != nil {
+// CheckNow handles POST /api/tracker/check-now
+func (th *TrackerHandlers) CheckNow(c *gin.Context) {
+	// Get all active trackers
+	trackers, err := th.storage.GetActiveTrackers()
+	if err != nil {
+		log.Printf("Failed to get active trackers: %v", err)
 		c.JSON(http.StatusInternalServerError, gin.H{
-			"error":   "Failed to start monitoring",
-			"details": err.Error(),
+			"error":   "Failed to get trackers",
+			"message": err.Error(),
 		})
 		return
+	}
+
+	if len(trackers) == 0 {
+		c.JSON(http.StatusOK, gin.H{
+			"message": "No active trackers to check",
+			"result": models.BatchCheckResult{
+				TotalChecked:     0,
+				SuccessfulChecks: 0,
+				FailedChecks:     0,
+				Results:          []models.TrackerCheckResult{},
+				TotalTime:        0,
+				AverageTime:      0,
+			},
+		})
+		return
+	}
+
+	// TODO: Implement actual checking logic here
+	// For now, return a placeholder response
+	result := models.BatchCheckResult{
+		TotalChecked:     len(trackers),
+		SuccessfulChecks: 0,
+		FailedChecks:     len(trackers),
+		Results:          make([]models.TrackerCheckResult, len(trackers)),
+		TotalTime:        0,
+		AverageTime:      0,
+	}
+
+	for i, tracker := range trackers {
+		result.Results[i] = models.TrackerCheckResult{
+			TrackerID: tracker.ID,
+			Success:   false,
+			Error:     "Checking functionality not yet implemented",
+			CheckTime: 0,
+		}
 	}
 
 	c.JSON(http.StatusOK, gin.H{
-		"message": "Monitoring started successfully",
-		"status":  th.monitor.GetStatus(),
+		"message": "Manual check initiated",
+		"result":  result,
 	})
 }
 
-// StopMonitoring handles POST /api/monitor/stop - Stop monitoring
-func (th *TrackerHandlers) StopMonitoring(c *gin.Context) {
-	if err := th.monitor.StopMonitoring(); err != nil {
+// GetTrackerStatus handles GET /api/tracker/status
+func (th *TrackerHandlers) GetTrackerStatus(c *gin.Context) {
+	// Get tracker statistics
+	stats, err := th.storage.GetTrackerStats()
+	if err != nil {
+		log.Printf("Failed to get tracker stats: %v", err)
 		c.JSON(http.StatusInternalServerError, gin.H{
-			"error":   "Failed to stop monitoring",
-			"details": err.Error(),
+			"error":   "Failed to get tracker statistics",
+			"message": err.Error(),
 		})
 		return
 	}
 
-	c.JSON(http.StatusOK, gin.H{
-		"message": "Monitoring stopped successfully",
-		"status":  th.monitor.GetStatus(),
-	})
-}
+	// TODO: Get actual worker status from tracker worker
+	// For now, return placeholder status
+	workerStatus := models.TrackerWorkerStatus{
+		IsRunning:        false, // Will be updated when worker is implemented
+		LastScanTime:     time.Time{},
+		NextScanTime:     time.Time{},
+		ScanInterval:     3600, // 1 hour
+		ItemsProcessed:   0,
+		ErrorsEncounted:  0,
+		AverageCheckTime: 0,
+	}
 
-// GetMonitorStatus handles GET /api/monitor/status - Get monitoring status
-func (th *TrackerHandlers) GetMonitorStatus(c *gin.Context) {
-	status := th.monitor.GetStatus()
-	stats := th.monitor.GetStats()
-
 	c.JSON(http.StatusOK, gin.H{
-		"status": status,
 		"stats":  stats,
+		"worker": workerStatus,
 	})
 }
 
-// GetMonitorStats handles GET /api/monitor/stats - Get monitoring statistics
-func (th *TrackerHandlers) GetMonitorStats(c *gin.Context) {
-	stats := th.monitor.GetStats()
-
-	c.JSON(http.StatusOK, stats)
+// GetTrackerOptions handles GET /api/tracker/options
+func (th *TrackerHandlers) GetTrackerOptions(c *gin.Context) {
+	c.JSON(http.StatusOK, gin.H{
+		"statuses": []string{
+			string(models.TrackerStatusActive),
+			string(models.TrackerStatusPaused),
+		},
+		"sort_options": []string{
+			"name",
+			"created_at",
+			"last_checked",
+			"price",
+		},
+		"sort_orders": []string{
+			"asc",
+			"desc",
+		},
+	})
 }
 
-// Request/Response structures
+// Helper functions
 
-// AddTrackerRequest represents a request to add a new tracker
-type AddTrackerRequest struct {
-	URL    string `json:"url" binding:"required"`
-	Name   string `json:"name"`
-	UserID string `json:"user_id"`
+func (th *TrackerHandlers) validateURL(urlStr string) error {
+	if urlStr == "" {
+		return fmt.Errorf("URL is required")
+	}
+
+	// Parse URL
+	parsedURL, err := url.Parse(urlStr)
+	if err != nil {
+		return fmt.Errorf("invalid URL format: %v", err)
+	}
+
+	// Check scheme
+	if parsedURL.Scheme != "http" && parsedURL.Scheme != "https" {
+		return fmt.Errorf("URL must use http or https protocol")
+	}
+
+	// Check host
+	if parsedURL.Host == "" {
+		return fmt.Errorf("URL must have a valid host")
+	}
+
+	// Optional: Add domain whitelist validation here
+	// For now, allow any valid URL
+
+	return nil
 }
 
-// UpdateTrackerRequest represents a request to update a tracker
-type UpdateTrackerRequest struct {
-	Name     *string `json:"name"`
-	InStock  *bool   `json:"in_stock"`
-	Image    *string `json:"image"`
-	PriceYen *string `json:"price_yen"`
-	UserID   *string `json:"user_id"`
-}
+func (th *TrackerHandlers) generateTrackerName(urlStr string) string {
+	parsedURL, err := url.Parse(urlStr)
+	if err != nil {
+		return "Unknown Item"
+	}
 
-// BulkAddTrackersRequest represents a request to bulk add trackers
-type BulkAddTrackersRequest struct {
-	Trackers []AddTrackerRequest `json:"trackers" binding:"required"`
-}
+	// Extract a meaningful name from the URL
+	host := parsedURL.Host
+	path := parsedURL.Path
 
-// RegisterTrackerRoutes registers all tracker-related routes
-func RegisterTrackerRoutes(router *gin.Engine, stockMonitor *monitor.StockMonitor) {
-	handlers := NewTrackerHandlers(stockMonitor)
+	// Remove common prefixes
+	host = strings.TrimPrefix(host, "www.")
 
-	api := router.Group("/api")
-	{
-		// Tracker CRUD operations
-		tracker := api.Group("/tracker")
-		{
-			tracker.POST("", handlers.AddTracker)
-			tracker.GET("", handlers.GetTrackers)
-			tracker.GET("/:id", handlers.GetTracker)
-			tracker.PUT("/:id", handlers.UpdateTracker)
-			tracker.DELETE("/:id", handlers.DeleteTracker)
-			tracker.POST("/bulk", handlers.BulkAddTrackers)
-		}
-
-		// Monitor control operations
-		monitor := api.Group("/monitor")
-		{
-			monitor.POST("/start", handlers.StartMonitoring)
-			monitor.POST("/stop", handlers.StopMonitoring)
-			monitor.GET("/status", handlers.GetMonitorStatus)
-			monitor.GET("/stats", handlers.GetMonitorStats)
+	// Try to extract item name from path
+	pathParts := strings.Split(path, "/")
+	for i := len(pathParts) - 1; i >= 0; i-- {
+		part := strings.TrimSpace(pathParts[i])
+		if part != "" && part != "products" && part != "item" {
+			// Clean up the part
+			part = strings.ReplaceAll(part, "-", " ")
+			part = strings.ReplaceAll(part, "_", " ")
+			return fmt.Sprintf("%s - %s", strings.Title(part), host)
 		}
 	}
+
+	return fmt.Sprintf("Item from %s", host)
+}
+
+func (th *TrackerHandlers) parseTrackerFilterOptions(values url.Values) models.TrackerFilterOptions {
+	filters := models.DefaultTrackerFilterOptions()
+
+	// Status filter
+	if status := values.Get("status"); status != "" {
+		filters.Status = models.TrackerStatus(status)
+	}
+
+	// In stock filter
+	if inStock := values.Get("in_stock"); inStock != "" {
+		if inStock == "true" {
+			inStockBool := true
+			filters.InStock = &inStockBool
+		} else if inStock == "false" {
+			inStockBool := false
+			filters.InStock = &inStockBool
+		}
+	}
+
+	// User ID filter
+	if userID := values.Get("user_id"); userID != "" {
+		filters.UserID = userID
+	}
+
+	// Sort options
+	if sortBy := values.Get("sort_by"); sortBy != "" {
+		filters.SortBy = sortBy
+	}
+
+	if sortOrder := values.Get("sort_order"); sortOrder != "" {
+		filters.SortOrder = sortOrder
+	}
+
+	// Pagination
+	if pageStr := values.Get("page"); pageStr != "" {
+		if page := parseInt(pageStr, 1); page > 0 {
+			filters.Page = page
+		}
+	}
+
+	if pageSizeStr := values.Get("page_size"); pageSizeStr != "" {
+		if pageSize := parseInt(pageSizeStr, 50); pageSize > 0 && pageSize <= 100 {
+			filters.PageSize = pageSize
+		}
+	}
+
+	return filters
+}
+
+func parseInt(str string, defaultVal int) int {
+	if str == "" {
+		return defaultVal
+	}
+
+	// Simple integer parsing
+	result := 0
+	for _, r := range str {
+		if r >= '0' && r <= '9' {
+			result = result*10 + int(r-'0')
+		} else {
+			return defaultVal
+		}
+	}
+
+	if result == 0 {
+		return defaultVal
+	}
+	return result
 }

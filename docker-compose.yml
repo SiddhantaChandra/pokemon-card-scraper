@@ -8,11 +8,39 @@ services:
     volumes:
       - ./data:/data
     environment:
-      - DB_PATH=/data/badger
+      # Database Configuration
+      - BADGER_PATH=/data/badger
+      - BADGER_IN_MEMORY=false
+      
+      # Server Configuration
+      - PORT=8080
+      - DEBUG=false
+      
+      # Legacy scraper settings (for existing functionality)
       - SCRAPE_INTERVAL=300
       - USE_PARALLEL_SCRAPER=true
-      - DEBUG=false
-      - PORT=8080
+      
+      # Tracker Configuration (Debug - 30 second intervals)
+      - TRACKER_ENABLED=true
+      - TRACKER_DEVELOPMENT=true
+      - TRACKER_SCAN_INTERVAL=30s
+      - TRACKER_MAX_WORKERS=2
+      - TRACKER_TIMEOUT=30s
+      - TRACKER_ENABLE_NOTIFICATIONS=true
+      
+      # Scraper Configuration
+      - TRACKER_HEADLESS=true
+      - TRACKER_SCRAPER_TIMEOUT=60s
+      - TRACKER_USER_AGENT=Mozilla/5.0 (X11; Linux x86_64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/91.0.4472.124 Safari/537.36
+      
+      # Discord Configuration (optional - set your webhook URL)
+      # - DISCORD_WEBHOOK_URL=https://discord.com/api/webhooks/YOUR_WEBHOOK_ID/YOUR_WEBHOOK_TOKEN
+      - DISCORD_USERNAME=Pokemon Card Tracker
+      - DISCORD_TIMEOUT=15s
+      
+      # Chrome Configuration for Docker
+      - CHROME_BIN=/usr/bin/chromium-browser
+      - CHROME_PATH=/usr/bin/chromium-browser
     restart: unless-stopped
     healthcheck:
       test: ["CMD", "curl", "-f", "http://localhost:8080/health"]

@@ -17,8 +17,22 @@ RUN CGO_ENABLED=0 GOOS=linux go build -a -installsuffix cgo -o main cmd/server/m
 
 FROM alpine:latest
 
-# Install necessary packages including curl for health checks
-RUN apk --no-cache add ca-certificates curl
+# Install necessary packages including Chrome for tracker system
+RUN apk --no-cache add \
+    ca-certificates \
+    curl \
+    chromium \
+    nss \
+    freetype \
+    freetype-dev \
+    harfbuzz \
+    ca-certificates \
+    ttf-freefont \
+    && rm -rf /var/cache/apk/*
+
+# Set Chrome executable path for ChromeDP
+ENV CHROME_BIN=/usr/bin/chromium-browser
+ENV CHROME_PATH=/usr/bin/chromium-browser
 
 WORKDIR /root/
 

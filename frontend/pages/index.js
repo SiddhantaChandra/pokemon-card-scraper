@@ -1,17 +1,21 @@
 import { useState, useEffect } from 'react';
 import Image from 'next/image';
 import Head from 'next/head';
+import Link from 'next/link';
 import { useSearch } from '../hooks/useSearch';
 import { useCards } from '../hooks/useCards';
+import { useTracker } from '../hooks/useTracker';
 import { useDarkMode } from '../lib/darkModeContext';
 import SearchBar from '../components/SearchBar';
 import CardGrid from '../components/CardGrid';
 import ScrapeStatus from '../components/ScrapeStatus';
 import ScraperControls from '../components/ScraperControls';
+import TrackerForm from '../components/TrackerForm';
+import TrackerList from '../components/TrackerList';
+import TrackerStats from '../components/TrackerStats';
 import Pagination, { CompactPagination } from '../components/Pagination';
 
 export default function Home() {
-  const [activeTab, setActiveTab] = useState('cards');
   const { isDarkMode, toggleDarkMode } = useDarkMode();
   
   // Search state management
@@ -40,6 +44,19 @@ export default function Home() {
     isEmpty,
     refresh
   } = useCards(debouncedQuery, filters);
+
+  // Tracker data fetching
+  const {
+    trackers,
+    stats: trackerStats,
+    workerStatus,
+    loading: trackerLoading,
+    error: trackerError,
+    addTracker,
+    deleteTracker,
+    checkNow,
+    refreshData: refreshTrackerData
+  } = useTracker();
 
   // Handle URL parameters on page load
   useEffect(() => {
@@ -97,11 +114,6 @@ export default function Home() {
     }
   }, [query, filters]);
 
-  const tabs = [
-    { id: 'cards', name: 'Cards', icon: '🃏' },
-    { id: 'scraper', name: 'Scraper', icon: '⚙️' }
-  ];
-
   return (
     <>
       <Head>
@@ -129,22 +141,21 @@ export default function Home() {
                 </div>
               </div>
 
-              {/* Tab Navigation */}
+              {/* Navigation */}
               <div className="flex space-x-8 -mb-px">
-                {tabs.map((tab) => (
-                  <button
-                    key={tab.id}
-                    onClick={() => setActiveTab(tab.id)}
-                    className={`flex items-center space-x-2 py-4 px-1 border-b-2 font-medium text-sm transition-colors ${
-                      activeTab === tab.id
-                        ? 'border-blue-500 text-blue-600 dark:text-blue-400'
-                        : 'border-transparent text-gray-500 dark:text-gray-400 hover:text-gray-700 dark:hover:text-gray-300 hover:border-gray-300 dark:hover:border-gray-600'
-                    }`}
-                  >
-                    <span className="text-lg">{tab.icon}</span>
-                    <span>{tab.name}</span>
-                  </button>
-                ))}
+                <div className="flex items-center space-x-2 py-4 px-1 border-b-2 border-blue-500 text-blue-600 dark:text-blue-400 font-medium text-sm">
+                  <span className="text-lg">🃏</span>
+                  <span>Cards</span>
+                </div>
+                <Link href="/tracker" className="flex items-center space-x-2 py-4 px-1 border-b-2 border-transparent text-gray-500 dark:text-gray-400 hover:text-gray-700 dark:hover:text-gray-300 hover:border-gray-300 dark:hover:border-gray-600 font-medium text-sm transition-colors">
+                  <span className="text-lg">📍</span>
+                  <span>Tracker</span>
+                </Link>
+                <Link href="/scraper" className="flex items-center space-x-2 py-4 px-1 border-b-2 border-transparent text-gray-500 dark:text-gray-400 hover:text-gray-700 dark:hover:text-gray-300 hover:border-gray-300 dark:hover:border-gray-600 font-medium text-sm transition-colors">
+                  <span className="text-lg">⚙️</span>
+                  <span>Scraper</span>
+                </Link>
+                
                 <div className="flex items-center space-x-4">
                   {/* Dark Mode Toggle */}
                   <button
@@ -182,166 +193,144 @@ export default function Home() {
 
         {/* Main Content */}
         <main className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-8">
-          {/* Cards Tab */}
-          {activeTab === 'cards' && (
-            <div className="space-y-6">
-              {/* Search Bar */}
-              <SearchBar
-                query={query}
-                onQueryChange={setSearchQuery}
-                filters={filters}
-                onFiltersChange={updateFilters}
-              />
+          <div className="space-y-6">
+            {/* Search Bar */}
+            <SearchBar
+              query={query}
+              onQueryChange={setSearchQuery}
+              filters={filters}
+              onFiltersChange={updateFilters}
+            />
 
-              {/* Active Filters Summary */}
-              {hasActiveFilters() && (
-                <div className="bg-blue-50 dark:bg-blue-900/20 border border-blue-200 dark:border-blue-800 rounded-lg p-4">
-                  <div className="flex items-center justify-between">
-                    <div className="flex items-center space-x-2 text-sm text-blue-800 dark:text-blue-200">
-                      <svg className="h-4 w-4" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-                        <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 6V4m0 2a2 2 0 100 4m0-4a2 2 0 110 4m-6 8a2 2 0 100-4m0 4a2 2 0 100 4m0-4v2m0-6V4m6 6v10m6-2a2 2 0 100-4m0 4a2 2 0 100 4m0-4v2m0-6V4" />
-                      </svg>
-                      <span className="font-medium">Active filters:</span>
-                      <div className="flex flex-wrap items-center gap-2">
-                        {query && (
-                          <span className="inline-flex items-center px-2 py-1 rounded-full text-xs font-medium bg-blue-100 dark:bg-blue-800 text-blue-800 dark:text-blue-200">
-                            Search: &ldquo;{query}&rdquo;
-                          </span>
-                        )}
-                        {filters.min_price && (
-                          <span className="inline-flex items-center px-2 py-1 rounded-full text-xs font-medium bg-blue-100 dark:bg-blue-800 text-blue-800 dark:text-blue-200">
-                            Min: ¥{filters.min_price}
-                          </span>
-                        )}
-                        {filters.max_price && (
-                          <span className="inline-flex items-center px-2 py-1 rounded-full text-xs font-medium bg-blue-100 dark:bg-blue-800 text-blue-800 dark:text-blue-200">
-                            Max: ¥{filters.max_price}
-                          </span>
-                        )}
-                        {filters.in_stock && (
-                          <span className="inline-flex items-center px-2 py-1 rounded-full text-xs font-medium bg-green-100 dark:bg-green-800 text-green-800 dark:text-green-200">
-                            In Stock Only
-                          </span>
-                        )}
-                        {filters.set && (
-                          <span className="inline-flex items-center px-2 py-1 rounded-full text-xs font-medium bg-purple-100 dark:bg-purple-800 text-purple-800 dark:text-purple-200">
-                            Set: {filters.set}
-                          </span>
-                        )}
-                        {filters.rarity && (
-                          <span className="inline-flex items-center px-2 py-1 rounded-full text-xs font-medium bg-yellow-100 dark:bg-yellow-800 text-yellow-800 dark:text-yellow-200">
-                            Rarity: {filters.rarity}
-                          </span>
-                        )}
-                        {filters.conditions && filters.conditions.length > 0 && (
-                          <span className="inline-flex items-center px-2 py-1 rounded-full text-xs font-medium bg-orange-100 dark:bg-orange-800 text-orange-800 dark:text-orange-200">
-                            Conditions: {filters.conditions.join(', ')}
-                          </span>
-                        )}
-                      </div>
+            {/* Active Filters Summary */}
+            {hasActiveFilters() && (
+              <div className="bg-blue-50 dark:bg-blue-900/20 border border-blue-200 dark:border-blue-800 rounded-lg p-4">
+                <div className="flex items-center justify-between">
+                  <div className="flex items-center space-x-2 text-sm text-blue-800 dark:text-blue-200">
+                    <svg className="h-4 w-4" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                      <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 6V4m0 2a2 2 0 100 4m0-4a2 2 0 110 4m-6 8a2 2 0 100-4m0 4a2 2 0 100 4m0-4v2m0-6V4m6 6v10m6-2a2 2 0 100-4m0 4a2 2 0 100 4m0-4v2m0-6V4" />
+                    </svg>
+                    <span className="font-medium">Active filters:</span>
+                    <div className="flex flex-wrap items-center gap-2">
+                      {query && (
+                        <span className="inline-flex items-center px-2 py-1 rounded-full text-xs font-medium bg-blue-100 dark:bg-blue-800 text-blue-800 dark:text-blue-200">
+                          Search: &ldquo;{query}&rdquo;
+                        </span>
+                      )}
+                      {filters.min_price && (
+                        <span className="inline-flex items-center px-2 py-1 rounded-full text-xs font-medium bg-blue-100 dark:bg-blue-800 text-blue-800 dark:text-blue-200">
+                          Min: ¥{filters.min_price}
+                        </span>
+                      )}
+                      {filters.max_price && (
+                        <span className="inline-flex items-center px-2 py-1 rounded-full text-xs font-medium bg-blue-100 dark:bg-blue-800 text-blue-800 dark:text-blue-200">
+                          Max: ¥{filters.max_price}
+                        </span>
+                      )}
+                      {filters.in_stock && (
+                        <span className="inline-flex items-center px-2 py-1 rounded-full text-xs font-medium bg-green-100 dark:bg-green-800 text-green-800 dark:text-green-200">
+                          In Stock Only
+                        </span>
+                      )}
+                      {filters.set && (
+                        <span className="inline-flex items-center px-2 py-1 rounded-full text-xs font-medium bg-purple-100 dark:bg-purple-800 text-purple-800 dark:text-purple-200">
+                          Set: {filters.set}
+                        </span>
+                      )}
+                      {filters.rarity && (
+                        <span className="inline-flex items-center px-2 py-1 rounded-full text-xs font-medium bg-yellow-100 dark:bg-yellow-800 text-yellow-800 dark:text-yellow-200">
+                          Rarity: {filters.rarity}
+                        </span>
+                      )}
+                      {filters.conditions && filters.conditions.length > 0 && (
+                        <span className="inline-flex items-center px-2 py-1 rounded-full text-xs font-medium bg-orange-100 dark:bg-orange-800 text-orange-800 dark:text-orange-200">
+                          Conditions: {filters.conditions.join(', ')}
+                        </span>
+                      )}
                     </div>
-                    <button
-                      onClick={clearSearch}
-                      className="text-sm text-blue-600 dark:text-blue-400 hover:text-blue-800 dark:hover:text-blue-300 font-medium"
-                    >
-                      Clear All
-                    </button>
                   </div>
-                </div>
-              )}
-
-              {/* Results Summary and Top Pagination */}
-              {!isLoading && !error && (
-                <div className="flex items-center justify-between text-sm text-gray-600 dark:text-gray-400">
-                  <div>
-                    {totalItems > 0 ? (
-                      <>
-                        Found <span className="font-medium text-gray-900 dark:text-white">{totalItems.toLocaleString()}</span> cards
-                        {query && <span> matching &ldquo;{query}&rdquo;</span>}
-                      </>
-                    ) : (
-                      <span>No cards found</span>
-                    )}
-                  </div>
-                  <div className="flex items-center space-x-4">
-                    {totalPages > 1 && (
-                      <div className="hidden sm:block">
-                        Page <span className="font-medium text-gray-900 dark:text-white">{currentPage}</span> of{' '}
-                        <span className="font-medium text-gray-900 dark:text-white">{totalPages}</span>
-                      </div>
-                    )}
-                    {/* Top Compact Pagination */}
-                    <CompactPagination
-                      currentPage={currentPage}
-                      totalPages={totalPages}
-                      onPageChange={goToPage}
-                    />
-                  </div>
-                </div>
-              )}
-
-              {/* Cards Grid */}
-              <div id="cards-grid-top">
-                <CardGrid
-                  cards={cards}
-                  isLoading={isLoading}
-                  isEmpty={isEmpty}
-                  error={error}
-                />
-              </div>
-
-              {/* Bottom Pagination with Scroll to Top */}
-              {totalPages > 1 && (
-                <Pagination
-                  currentPage={currentPage}
-                  totalPages={totalPages}
-                  totalItems={totalItems}
-                  pageSize={pageSize}
-                  onPageChange={goToPage}
-                  className="mt-8"
-                  scrollToTop={true}
-                  scrollTarget="#cards-grid-top"
-                />
-              )}
-
-              {/* Footer Info */}
-              <div className="text-center text-sm text-gray-500 dark:text-gray-400 py-8 border-t border-gray-200 dark:border-gray-700">
-                <p>
-                  Data scraped from{' '}
-                  <a
-                    href="https://torecacamp-pokemon.com"
-                    target="_blank"
-                    rel="noopener noreferrer"
-                    className="text-blue-600 dark:text-blue-400 hover:text-blue-800 dark:hover:text-blue-300"
+                  <button
+                    onClick={clearSearch}
+                    className="text-sm text-blue-600 dark:text-blue-400 hover:text-blue-800 dark:hover:text-blue-300 font-medium"
                   >
-                    torecacamp-pokemon.com
-                  </a>
-                </p>
-                <p className="mt-1">
-                  Prices and availability are updated regularly through automated scraping.
-                </p>
-              </div>
-            </div>
-          )}
-
-          {/* Scraper Tab */}
-          {activeTab === 'scraper' && (
-            <div className="space-y-6">
-              <div className="bg-white dark:bg-gray-800 rounded-lg shadow-md border border-gray-200 dark:border-gray-700 p-6">
-                <h2 className="text-xl font-semibold text-gray-900 dark:text-white mb-6">Scraper Control & Status</h2>
-                
-                {/* Scraper Controls */}
-                <div className="mb-8">
-                  <ScraperControls />
+                    Clear All
+                  </button>
                 </div>
+              </div>
+            )}
 
-                {/* Scraper Status */}
+            {/* Results Summary and Top Pagination */}
+            {!isLoading && !error && (
+              <div className="flex items-center justify-between text-sm text-gray-600 dark:text-gray-400">
                 <div>
-                  <ScrapeStatus />
+                  {totalItems > 0 ? (
+                    <>
+                      Found <span className="font-medium text-gray-900 dark:text-white">{totalItems.toLocaleString()}</span> cards
+                      {query && <span> matching &ldquo;{query}&rdquo;</span>}
+                    </>
+                  ) : (
+                    <span>No cards found</span>
+                  )}
+                </div>
+                <div className="flex items-center space-x-4">
+                  {totalPages > 1 && (
+                    <div className="hidden sm:block">
+                      Page <span className="font-medium text-gray-900 dark:text-white">{currentPage}</span> of{' '}
+                      <span className="font-medium text-gray-900 dark:text-white">{totalPages}</span>
+                    </div>
+                  )}
+                  {/* Top Compact Pagination */}
+                  <CompactPagination
+                    currentPage={currentPage}
+                    totalPages={totalPages}
+                    onPageChange={goToPage}
+                  />
                 </div>
               </div>
+            )}
+
+            {/* Cards Grid */}
+            <div id="cards-grid-top">
+              <CardGrid
+                cards={cards}
+                isLoading={isLoading}
+                isEmpty={isEmpty}
+                error={error}
+              />
             </div>
-          )}
+
+            {/* Bottom Pagination with Scroll to Top */}
+            {totalPages > 1 && (
+              <Pagination
+                currentPage={currentPage}
+                totalPages={totalPages}
+                totalItems={totalItems}
+                pageSize={pageSize}
+                onPageChange={goToPage}
+                className="mt-8"
+                scrollToTop={true}
+                scrollTarget="#cards-grid-top"
+              />
+            )}
+
+            {/* Footer Info */}
+            <div className="text-center text-sm text-gray-500 dark:text-gray-400 py-8 border-t border-gray-200 dark:border-gray-700">
+              <p>
+                Data scraped from{' '}
+                <a
+                  href="https://torecacamp-pokemon.com"
+                  target="_blank"
+                  rel="noopener noreferrer"
+                  className="text-blue-600 dark:text-blue-400 hover:text-blue-800 dark:hover:text-blue-300"
+                >
+                  torecacamp-pokemon.com
+                </a>
+              </p>
+              <p className="mt-1">
+                Prices and availability are updated regularly through automated scraping.
+              </p>
+            </div>
+          </div>
         </main>
       </div>
     </>
